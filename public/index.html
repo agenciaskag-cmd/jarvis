@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jarvis</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0a; color: #f5f5f5; min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 24px 16px 140px;
+  }
+  h1 { font-size: 28px; letter-spacing: 4px; font-weight: 700; margin-top: 8px; }
+  h1 span { color: #F26B1D; }
+  .status { font-size: 18px; color: #999; margin-top: 6px; min-height: 24px; transition: color .3s; }
+
+  .orbe-area { margin: 28px 0 12px; position: relative; width: 180px; height: 180px;
+    display: flex; align-items: center; justify-content: center; }
+  .orbe {
+    width: 130px; height: 130px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ff9a55, #F26B1D 55%, #7a2d05);
+    box-shadow: 0 0 60px rgba(242, 107, 29, .45);
+    transition: all .4s ease;
+  }
+  .anel { position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(242,107,29,.25); }
+
+  body.ouvindo .orbe { background: radial-gradient(circle at 35% 30%, #7dffb0, #22C55E 55%, #0a5c2c); box-shadow: 0 0 70px rgba(34,197,94,.55); animation: pulso 1s ease-in-out infinite; }
+  body.ouvindo .anel { border-color: rgba(34,197,94,.4); animation: expandir 1.2s ease-out infinite; }
+  body.pensando .orbe { animation: pulso 1.6s ease-in-out infinite; filter: brightness(1.15); }
+  body.pensando .anel { animation: girar 2.4s linear infinite; border-style: dashed; }
+  body.falando .orbe { animation: pulso .55s ease-in-out infinite; box-shadow: 0 0 90px rgba(242,107,29,.7); }
+
+  @keyframes pulso { 0%,100% { transform: scale(1); } 50% { transform: scale(1.09); } }
+  @keyframes expandir { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.35); opacity: 0; } }
+  @keyframes girar { to { transform: rotate(360deg); } }
+
+  .conversa { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
+  .bolha { padding: 14px 18px; border-radius: 18px; font-size: 18px; line-height: 1.5; max-width: 88%; white-space: pre-wrap; }
+  .bolha.eu { background: #1d3a29; border: 1px solid #22C55E44; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .bolha.jarvis { background: #1c1c1c; border: 1px solid #F26B1D44; align-self: flex-start; border-bottom-left-radius: 4px; }
+
+  .rodape { position: fixed; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, #0a0a0a 30%);
+    display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 26px 16px 22px; }
+  .botao-mic {
+    width: 84px; height: 84px; border-radius: 50%; border: none; cursor: pointer;
+    background: #22C55E; color: #06230f; font-size: 36px;
+    box-shadow: 0 6px 26px rgba(34,197,94,.4);
+    transition: transform .15s, background .2s;
+    -webkit-user-select: none; user-select: none; touch-action: none;
+  }
+  .botao-mic:active, .botao-mic.gravando { transform: scale(1.12); background: #F26B1D; color: #2b1200; box-shadow: 0 6px 30px rgba(242,107,29,.55); }
+  .dica { font-size: 16px; color: #888; white-space: nowrap; }
+
+  .linha-texto { display: flex; gap: 8px; width: 100%; max-width: min(560px, calc(100vw - 32px)); }
+  .linha-texto input {
+    flex: 1; min-width: 0; padding: 13px 16px; border-radius: 24px; border: 1px solid #333;
+    background: #161616; color: #f5f5f5; font-size: 18px; outline: none;
+  }
+  .linha-texto input:focus { border-color: #F26B1D; }
+  .linha-texto button {
+    padding: 0 22px; border-radius: 24px; border: none; background: #F26B1D;
+    color: #fff; font-size: 18px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+  .nova {
+    background: none; border: 1px solid #333; color: #999; border-radius: 20px;
+    padding: 8px 18px; font-size: 15px; cursor: pointer; margin-top: 4px; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+  <h1>J A R V I S <span>●</span></h1>
+  <div class="status" id="status">Pronto para conversar</div>
+
+  <div class="orbe-area"><div class="anel"></div><div class="orbe"></div></div>
+
+  <div class="conversa" id="conversa"></div>
+
+  <div class="rodape">
+    <div class="linha-texto">
+      <input id="campoTexto" type="text" placeholder="Ou escreva aqui e aperte enter" autocomplete="off">
+      <button id="botaoEnviar">Enviar</button>
+    </div>
+    <button class="botao-mic" id="botaoMic">🎙️</button>
+    <div class="dica">Segure o botão, fale e solte</div>
+    <button class="nova" id="botaoNova">Nova conversa</button>
+  </div>
+
+<script>
+  const corpo = document.body;
+  const status = document.getElementById('status');
+  const conversa = document.getElementById('conversa');
+  const botaoMic = document.getElementById('botaoMic');
+  const campoTexto = document.getElementById('campoTexto');
+
+  let gravador = null, pedacos = [], ocupado = false, tipoAudio = '';
+
+  function definirEstado(nome, texto) {
+    corpo.className = nome;
+    status.textContent = texto;
+  }
+
+  function bolha(classe, texto) {
+    const div = document.createElement('div');
+    div.className = 'bolha ' + classe;
+    div.textContent = texto;
+    conversa.appendChild(div);
+    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    return div;
+  }
+
+  function tocar(base64) {
+    return new Promise((fim) => {
+      const audio = new Audio('data:audio/mp4;base64,' + base64);
+      definirEstado('falando', 'Falando...');
+      audio.onended = () => { definirEstado('', 'Pronto para conversar'); fim(); };
+      audio.onerror = () => { definirEstado('', 'Pronto para conversar'); fim(); };
+      audio.play().catch(() => { definirEstado('', 'Pronto para conversar'); fim(); });
+    });
+  }
+
+  async function processarResposta(resposta) {
+    const dados = await resposta.json();
+    if (dados.erro) {
+      definirEstado('', 'Pronto para conversar');
+      bolha('jarvis', dados.erro);
+      return;
+    }
+    if (dados.pergunta && !dados.jaExibida) bolha('eu', dados.pergunta);
+    bolha('jarvis', dados.resposta);
+    await tocar(dados.audio);
+  }
+
+  async function iniciarGravacao() {
+    if (ocupado) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      tipoAudio = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      gravador = new MediaRecorder(stream, { mimeType: tipoAudio });
+      pedacos = [];
+      gravador.ondataavailable = (e) => pedacos.push(e.data);
+      gravador.onstop = enviarAudio;
+      gravador.start();
+      botaoMic.classList.add('gravando');
+      definirEstado('ouvindo', 'Ouvindo você...');
+    } catch (e) {
+      definirEstado('', 'Preciso da permissão do microfone');
+    }
+  }
+
+  function pararGravacao() {
+    if (gravador && gravador.state === 'recording') {
+      gravador.stop();
+      gravador.stream.getTracks().forEach((t) => t.stop());
+    }
+    botaoMic.classList.remove('gravando');
+  }
+
+  async function enviarAudio() {
+    const blob = new Blob(pedacos, { type: tipoAudio });
+    if (blob.size < 2000) { definirEstado('', 'Áudio muito curto, tenta de novo'); return; }
+    ocupado = true;
+    definirEstado('pensando', 'Pensando...');
+    try {
+      const resposta = await fetch('/api/conversar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream', 'X-Audio-Type': tipoAudio },
+        body: blob
+      });
+      await processarResposta(resposta);
+    } catch (e) {
+      definirEstado('', 'Falha na conexão com o Jarvis');
+    }
+    ocupado = false;
+  }
+
+  async function enviarTexto() {
+    const texto = campoTexto.value.trim();
+    if (!texto || ocupado) return;
+    campoTexto.value = '';
+    ocupado = true;
+    bolha('eu', texto);
+    definirEstado('pensando', 'Pensando...');
+    try {
+      const resposta = await fetch('/api/texto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texto })
+      });
+      const dados = await resposta.json();
+      if (dados.erro) { bolha('jarvis', dados.erro); definirEstado('', 'Pronto para conversar'); }
+      else { bolha('jarvis', dados.resposta); await tocar(dados.audio); }
+    } catch (e) {
+      definirEstado('', 'Falha na conexão com o Jarvis');
+    }
+    ocupado = false;
+  }
+
+  botaoMic.addEventListener('pointerdown', iniciarGravacao);
+  botaoMic.addEventListener('pointerup', pararGravacao);
+  botaoMic.addEventListener('pointerleave', pararGravacao);
+  botaoMic.addEventListener('contextmenu', (e) => e.preventDefault());
+  document.getElementById('botaoEnviar').addEventListener('click', enviarTexto);
+  campoTexto.addEventListener('keydown', (e) => { if (e.key === 'Enter') enviarTexto(); });
+  document.getElementById('botaoNova').addEventListener('click', async () => {
+    await fetch('/api/nova', { method: 'POST' });
+    conversa.innerHTML = '';
+    definirEstado('', 'Nova conversa iniciada');
+  });
+</script>
+</body>
+</html>
