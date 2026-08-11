@@ -5,6 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const net = require('net');
 const { execFile, spawn } = require('child_process');
 
 const PORTA = 3080;
@@ -17,6 +18,8 @@ const VOZ_EDGE = 'pt-BR-AntonioNeural'; // brasileiro nativo (precisa de interne
 const PIPER = path.join(__dirname, 'tts/bin/piper');
 const VOZ_PIPER = path.join(__dirname, 'vozes/pt_BR-faber-medium.onnx'); // reserva offline
 const VOZ_RESERVA = 'Eddy (Português (Brasil))'; // último recurso se tudo falhar
+const MPV = '/opt/homebrew/bin/mpv';
+const MPV_SOCK = path.join(TMP, 'mpv.sock');
 const LIMITE_FALA = 2000; // caracteres; acima disso corta na frase e avisa que o resto está na tela
 const MODELO_CLAUDE = 'sonnet';
 
@@ -89,16 +92,12 @@ async function processarFila() {
   while (filaFalas.length > 0) {
     const item = filaFalas.shift();
     transmitir({ tipo: 'falando', texto: item.texto, origem: item.origem });
-    let arquivo = await gerarAudio(item.fala);
-    if (arquivo && config.velocidade > 1.01) {
-      const rapido = path.join(TMP, 'fala-rapida.m4a');
-      const acelerou = await rodarComPrazo('/opt/homebrew/bin/ffmpeg',
-        ['-y', '-loglevel', 'error', '-i', arquivo, '-filter:a', 'atempo=' + config.velocidade.toFixed(2), '-c:a', 'aac', rapido], 30000);
-      if (acelerou && fs.existsSync(rapido) && fs.statSync(rapido).size > 1000) arquivo = rapido;
-    }
+    const arquivo = await gerarAudio(item.fala);
     await new Promise((fim) => {
+      // mpv com canal de comando: a velocidade muda AO VIVO no meio da fala
       falaAtual = arquivo
-        ? spawn('/usr/bin/afplay', [arquivo])
+        ? spawn(MPV, ['--no-video', '--really-quiet', '--input-ipc-server=' + MPV_SOCK,
+            '--speed=' + config.velocidade, arquivo])
         : spawn('/usr/bin/say', ['-v', VOZ_RESERVA, item.fala]);
       falaAtual.on('exit', () => { falaAtual = null; fim(); });
       falaAtual.on('error', () => { falaAtual = null; fim(); });
@@ -106,6 +105,18 @@ async function processarFila() {
     transmitir({ tipo: 'parado' });
   }
   processandoFila = false;
+}
+
+// Manda o novo valor pro mpv que estiver tocando agora, sem interromper a fala
+function ajustarVelocidadeAoVivo(valor) {
+  if (!falaAtual) return;
+  try {
+    const canal = net.connect(MPV_SOCK, () => {
+      canal.write(JSON.stringify({ command: ['set_property', 'speed', valor] }) + '\n');
+      canal.end();
+    });
+    canal.on('error', () => {});
+  } catch {}
 }
 
 function rodarComPrazo(cmd, args, prazoMs, entradaStdin) {
@@ -190,6 +201,7 @@ const servidor = http.createServer(async (req, res) => {
       if (!Number.isFinite(v) || v < 1 || v > 3) return responderJson(res, 400, { erro: 'Velocidade deve ficar entre 1.0 e 3.0.' });
       config.velocidade = Math.round(v * 10) / 10;
       salvarConfig();
+      ajustarVelocidadeAoVivo(config.velocidade);
       return responderJson(res, 200, { ok: true, velocidade: config.velocidade });
     }
 
