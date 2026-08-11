@@ -42,7 +42,8 @@ function salvarConfig() {
 
 let sessaoClaude = null;          // contexto da conversa direta com o painel
 let filaFalas = [];               // anúncios aguardando a vez
-let falaAtual = null;             // processo say em andamento
+let falaAtual = null;             // processo de áudio em andamento
+let estadoFala = null;            // o que está sendo falado agora (pra painéis que conectam no meio)
 let processandoFila = false;
 let ultimaFalaPorOrigem = new Map(); // evita repetir a mesma resposta (resume/clear disparam o hook de novo)
 const clientesSse = new Set();
@@ -62,6 +63,7 @@ function transmitir(evento) {
 function limparParaFala(texto) {
   return texto
     .replace(/wylle/gi, 'Uíli') // o nome escreve-se Wylle mas pronuncia-se U-I-LI
+    .replace(/jarvis/gi, 'Járvis') // tônica no A: JÁR-VIZ
     .replace(/```[\s\S]*?```/g, ' trecho de código na tela ')
     .replace(/\|[^\n]*\|/g, ' ')
     .replace(/[*_#`>~]/g, '')
@@ -92,7 +94,8 @@ async function processarFila() {
   processandoFila = true;
   while (filaFalas.length > 0) {
     const item = filaFalas.shift();
-    transmitir({ tipo: 'falando', texto: item.texto, origem: item.origem });
+    estadoFala = { tipo: 'falando', texto: item.texto, origem: item.origem };
+    transmitir(estadoFala);
     const arquivo = await gerarAudio(item.fala);
     await new Promise((fim) => {
       // mpv com canal de comando: a velocidade muda AO VIVO no meio da fala
@@ -103,6 +106,7 @@ async function processarFila() {
       falaAtual.on('exit', () => { falaAtual = null; fim(); });
       falaAtual.on('error', () => { falaAtual = null; fim(); });
     });
+    estadoFala = null;
     transmitir({ tipo: 'parado' });
   }
   processandoFila = false;
@@ -123,19 +127,27 @@ function ajustarVelocidadeAoVivo(valor) {
 function rodarComPrazo(cmd, args, prazoMs, entradaStdin) {
   return new Promise((resolve) => {
     const proc = spawn(cmd, args);
+    let stderr = '';
+    proc.stderr.on('data', (c) => { stderr += c; });
     const timer = setTimeout(() => { proc.kill(); resolve(false); }, prazoMs);
     if (entradaStdin !== undefined) proc.stdin.end(entradaStdin);
-    proc.on('exit', (cod) => { clearTimeout(timer); resolve(cod === 0); });
-    proc.on('error', () => { clearTimeout(timer); resolve(false); });
+    proc.on('exit', (cod) => {
+      clearTimeout(timer);
+      if (cod !== 0) console.error('[Jarvis] ' + path.basename(cmd) + ' falhou: ' + stderr.slice(0, 200));
+      resolve(cod === 0);
+    });
+    proc.on('error', (e) => { clearTimeout(timer); console.error('[Jarvis] ' + path.basename(cmd) + ': ' + e.message); resolve(false); });
   });
 }
 
-// Tenta a voz escolhida pelo Wylle (Brian, online); sem internet cai pro Piper offline
+// Voz do Antonio (online, 2 tentativas); sem internet cai pro Piper offline
 async function gerarAudio(fala) {
   const mp3 = path.join(TMP, 'fala.mp3');
   const wav = path.join(TMP, 'fala.wav');
-  if (await rodarComPrazo(EDGE_TTS, ['--voice', VOZ_EDGE, '--text', fala, '--write-media', mp3], 15000)) {
-    if (fs.existsSync(mp3) && fs.statSync(mp3).size > 1000) return mp3;
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    if (await rodarComPrazo(EDGE_TTS, ['--voice', VOZ_EDGE, '--text', fala, '--write-media', mp3], 25000)) {
+      if (fs.existsSync(mp3) && fs.statSync(mp3).size > 1000) return mp3;
+    }
   }
   console.error('[Jarvis] voz online indisponível, usando a reserva offline');
   if (await rodarComPrazo(PIPER, ['-m', VOZ_PIPER, '--length-scale', '0.92', '-f', wav], 60000, fala)) {
@@ -209,6 +221,7 @@ const servidor = http.createServer(async (req, res) => {
     if (req.method === 'GET' && caminho === '/api/eventos') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
       res.write('data: ' + JSON.stringify({ tipo: 'conectado', velocidade: config.velocidade }) + '\n\n');
+      if (estadoFala) res.write('data: ' + JSON.stringify(estadoFala) + '\n\n');
       clientesSse.add(res);
       req.on('close', () => clientesSse.delete(res));
       return;
