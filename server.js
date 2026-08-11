@@ -15,9 +15,6 @@ const PUBLIC = path.join(__dirname, 'public');
 const MODELO_WHISPER = path.join(HOME, '.cache/whisper-cpp/ggml-large-v3-turbo.bin');
 const EDGE_TTS = path.join(__dirname, 'tts/bin/edge-tts');
 const VOZ_EDGE = 'pt-BR-AntonioNeural'; // brasileiro nativo (precisa de internet); Wylle rejeitou vozes multilingual por sotaque gringo
-const PIPER = path.join(__dirname, 'tts/bin/piper');
-const VOZ_PIPER = path.join(__dirname, 'vozes/pt_BR-faber-medium.onnx'); // reserva offline
-const VOZ_RESERVA = 'Eddy (Português (Brasil))'; // último recurso se tudo falhar
 const MPV = '/opt/homebrew/bin/mpv';
 const MPV_SOCK = path.join(TMP, 'mpv.sock');
 const LIMITE_FALA = 2000; // caracteres; acima disso corta na frase e avisa que o resto está na tela
@@ -97,15 +94,15 @@ async function processarFila() {
     estadoFala = { tipo: 'falando', texto: item.texto, origem: item.origem };
     transmitir(estadoFala);
     const arquivo = await gerarAudio(item.fala);
-    await new Promise((fim) => {
-      // mpv com canal de comando: a velocidade muda AO VIVO no meio da fala
-      falaAtual = arquivo
-        ? spawn(MPV, ['--no-video', '--really-quiet', '--input-ipc-server=' + MPV_SOCK,
-            '--speed=' + config.velocidade, arquivo])
-        : spawn('/usr/bin/say', ['-v', VOZ_RESERVA, item.fala]);
-      falaAtual.on('exit', () => { falaAtual = null; fim(); });
-      falaAtual.on('error', () => { falaAtual = null; fim(); });
-    });
+    if (arquivo) {
+      await new Promise((fim) => {
+        // mpv com canal de comando: a velocidade muda AO VIVO no meio da fala
+        falaAtual = spawn(MPV, ['--no-video', '--really-quiet', '--input-ipc-server=' + MPV_SOCK,
+          '--speed=' + config.velocidade, arquivo]);
+        falaAtual.on('exit', () => { falaAtual = null; fim(); });
+        falaAtual.on('error', () => { falaAtual = null; fim(); });
+      });
+    }
     estadoFala = null;
     transmitir({ tipo: 'parado' });
   }
@@ -140,19 +137,16 @@ function rodarComPrazo(cmd, args, prazoMs, entradaStdin) {
   });
 }
 
-// Voz do Antonio (online, 2 tentativas); sem internet cai pro Piper offline
+// REGRA DO WYLLE: NUNCA trocar a voz. É o Antonio ou silêncio (o texto fica no painel).
 async function gerarAudio(fala) {
   const mp3 = path.join(TMP, 'fala.mp3');
-  const wav = path.join(TMP, 'fala.wav');
-  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+  for (let tentativa = 1; tentativa <= 4; tentativa++) {
     if (await rodarComPrazo(EDGE_TTS, ['--voice', VOZ_EDGE, '--text', fala, '--write-media', mp3], 25000)) {
       if (fs.existsSync(mp3) && fs.statSync(mp3).size > 1000) return mp3;
     }
+    if (tentativa < 4) await new Promise((f) => setTimeout(f, 1500 * tentativa));
   }
-  console.error('[Jarvis] voz online indisponível, usando a reserva offline');
-  if (await rodarComPrazo(PIPER, ['-m', VOZ_PIPER, '--length-scale', '0.92', '-f', wav], 60000, fala)) {
-    if (fs.existsSync(wav) && fs.statSync(wav).size > 1000) return wav;
-  }
+  console.error('[Jarvis] voz indisponível após 4 tentativas; fala pulada (regra: nunca trocar a voz)');
   return null;
 }
 
