@@ -12,8 +12,9 @@ const HOME = os.homedir();
 const TMP = path.join(__dirname, 'tmp');
 const PUBLIC = path.join(__dirname, 'public');
 const MODELO_WHISPER = path.join(HOME, '.cache/whisper-cpp/ggml-large-v3-turbo.bin');
-const VOZ = 'Luciana';
-const VELOCIDADE = '190';
+const PIPER = path.join(__dirname, 'tts/bin/piper');
+const VOZ_PIPER = path.join(__dirname, 'vozes/pt_BR-faber-medium.onnx');
+const VOZ_RESERVA = 'Eddy (Português (Brasil))'; // usada só se o Piper falhar
 const LIMITE_FALA = 2000; // caracteres; acima disso corta na frase e avisa que o resto está na tela
 const MODELO_CLAUDE = 'sonnet';
 
@@ -79,8 +80,23 @@ async function processarFila() {
   while (filaFalas.length > 0) {
     const item = filaFalas.shift();
     transmitir({ tipo: 'falando', texto: item.texto, origem: item.origem });
+    const wav = path.join(TMP, 'fala.wav');
+    let gerou = false;
+    try {
+      await new Promise((fim, falha) => {
+        const piper = spawn(PIPER, ['-m', VOZ_PIPER, '--length-scale', '0.92', '-f', wav]);
+        piper.stdin.end(item.fala);
+        piper.on('exit', (cod) => cod === 0 ? fim() : falha(new Error('piper saiu com ' + cod)));
+        piper.on('error', falha);
+      });
+      gerou = true;
+    } catch (e) {
+      console.error('[Jarvis] piper falhou, usando voz reserva:', e.message);
+    }
     await new Promise((fim) => {
-      falaAtual = spawn('/usr/bin/say', ['-v', VOZ, '-r', VELOCIDADE, item.fala]);
+      falaAtual = gerou
+        ? spawn('/usr/bin/afplay', [wav])
+        : spawn('/usr/bin/say', ['-v', VOZ_RESERVA, item.fala]);
       falaAtual.on('exit', () => { falaAtual = null; fim(); });
       falaAtual.on('error', () => { falaAtual = null; fim(); });
     });
