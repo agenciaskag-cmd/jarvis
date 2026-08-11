@@ -61,6 +61,7 @@ function transmitir(evento) {
 
 function limparParaFala(texto) {
   return texto
+    .replace(/wylle/gi, 'Uíli') // o nome escreve-se Wylle mas pronuncia-se U-I-LI
     .replace(/```[\s\S]*?```/g, ' trecho de código na tela ')
     .replace(/\|[^\n]*\|/g, ' ')
     .replace(/[*_#`>~]/g, '')
