@@ -6,134 +6,175 @@
 <title>Jarvis</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
-    background: #0a0a0a; color: #f5f5f5; min-height: 100vh;
+    background: #0a0a0a; color: #f5f5f5;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     display: flex; flex-direction: column; align-items: center;
-    padding: 24px 16px 140px;
+    padding: 18px 14px 12px; overflow: hidden;
   }
-  h1 { font-size: 28px; letter-spacing: 4px; font-weight: 700; margin-top: 8px; }
+  h1 { font-size: 19px; letter-spacing: 5px; font-weight: 700; }
   h1 span { color: #F26B1D; }
-  .status { font-size: 18px; color: #999; margin-top: 6px; min-height: 24px; transition: color .3s; }
+  .status { font-size: 15px; color: #999; margin-top: 3px; min-height: 20px; }
+  .origem { font-size: 12px; color: #555; min-height: 16px; }
 
-  .orbe-area { margin: 28px 0 12px; position: relative; width: 180px; height: 180px;
-    display: flex; align-items: center; justify-content: center; }
+  .orbe-area { margin: 14px 0 10px; position: relative; width: 120px; height: 120px;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .orbe {
-    width: 130px; height: 130px; border-radius: 50%;
+    width: 90px; height: 90px; border-radius: 50%;
     background: radial-gradient(circle at 35% 30%, #ff9a55, #F26B1D 55%, #7a2d05);
-    box-shadow: 0 0 60px rgba(242, 107, 29, .45);
+    box-shadow: 0 0 45px rgba(242, 107, 29, .45);
     transition: all .4s ease;
   }
   .anel { position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(242,107,29,.25); }
 
-  body.ouvindo .orbe { background: radial-gradient(circle at 35% 30%, #7dffb0, #22C55E 55%, #0a5c2c); box-shadow: 0 0 70px rgba(34,197,94,.55); animation: pulso 1s ease-in-out infinite; }
-  body.ouvindo .anel { border-color: rgba(34,197,94,.4); animation: expandir 1.2s ease-out infinite; }
+  body.falando .orbe { animation: pulso .5s ease-in-out infinite; box-shadow: 0 0 70px rgba(242,107,29,.75); }
+  body.falando .anel { animation: expandir 1s ease-out infinite; }
   body.pensando .orbe { animation: pulso 1.6s ease-in-out infinite; filter: brightness(1.15); }
   body.pensando .anel { animation: girar 2.4s linear infinite; border-style: dashed; }
-  body.falando .orbe { animation: pulso .55s ease-in-out infinite; box-shadow: 0 0 90px rgba(242,107,29,.7); }
+  body.desconectado .orbe { filter: grayscale(1) brightness(.5); box-shadow: none; }
 
-  @keyframes pulso { 0%,100% { transform: scale(1); } 50% { transform: scale(1.09); } }
-  @keyframes expandir { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.35); opacity: 0; } }
+  @keyframes pulso { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+  @keyframes expandir { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.3); opacity: 0; } }
   @keyframes girar { to { transform: rotate(360deg); } }
 
-  .conversa { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 12px; margin-top: 10px; }
-  .bolha { padding: 14px 18px; border-radius: 18px; font-size: 18px; line-height: 1.5; max-width: 88%; white-space: pre-wrap; }
-  .bolha.eu { background: #1d3a29; border: 1px solid #22C55E44; align-self: flex-end; border-bottom-right-radius: 4px; }
-  .bolha.jarvis { background: #1c1c1c; border: 1px solid #F26B1D44; align-self: flex-start; border-bottom-left-radius: 4px; }
+  .botao-parar {
+    display: none; border: none; border-radius: 20px; padding: 9px 22px;
+    background: #2a1508; color: #F26B1D; border: 1px solid #F26B1D66;
+    font-size: 15px; font-weight: 600; cursor: pointer; white-space: nowrap; margin-bottom: 8px;
+  }
+  body.falando .botao-parar { display: block; }
 
-  .rodape { position: fixed; bottom: 0; left: 0; right: 0; background: linear-gradient(transparent, #0a0a0a 30%);
-    display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 26px 16px 22px; }
-  .botao-mic {
-    width: 84px; height: 84px; border-radius: 50%; border: none; cursor: pointer;
-    background: #22C55E; color: #06230f; font-size: 36px;
-    box-shadow: 0 6px 26px rgba(34,197,94,.4);
-    transition: transform .15s, background .2s;
-    -webkit-user-select: none; user-select: none; touch-action: none;
+  .historico {
+    flex: 1; width: 100%; max-width: 640px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 10px; padding: 4px 2px 10px;
   }
-  .botao-mic:active, .botao-mic.gravando { transform: scale(1.12); background: #F26B1D; color: #2b1200; box-shadow: 0 6px 30px rgba(242,107,29,.55); }
-  .dica { font-size: 16px; color: #888; white-space: nowrap; }
+  .fala {
+    background: #161616; border: 1px solid #2a2a2a; border-left: 3px solid #F26B1D;
+    border-radius: 10px; padding: 12px 14px; font-size: 15px; line-height: 1.55;
+    color: #ccc; white-space: pre-wrap; word-break: break-word;
+  }
+  .fala.atual { border-left-color: #22C55E; color: #f5f5f5; background: #191b17; }
+  .fala .cabecalho { font-size: 11px; color: #666; margin-bottom: 6px; letter-spacing: .5px; }
+  .fala.eu { border-left-color: #22C55E; background: #12190f; }
 
-  .linha-texto { display: flex; gap: 8px; width: 100%; max-width: min(560px, calc(100vw - 32px)); }
-  .linha-texto input {
-    flex: 1; min-width: 0; padding: 13px 16px; border-radius: 24px; border: 1px solid #333;
-    background: #161616; color: #f5f5f5; font-size: 18px; outline: none;
+  .entrada { width: 100%; max-width: 640px; display: flex; gap: 8px; padding-top: 8px; flex-shrink: 0; }
+  .entrada input {
+    flex: 1; min-width: 0; padding: 11px 15px; border-radius: 22px; border: 1px solid #333;
+    background: #161616; color: #f5f5f5; font-size: 15px; outline: none;
   }
-  .linha-texto input:focus { border-color: #F26B1D; }
-  .linha-texto button {
-    padding: 0 22px; border-radius: 24px; border: none; background: #F26B1D;
-    color: #fff; font-size: 18px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  .entrada input:focus { border-color: #F26B1D; }
+  .entrada button {
+    border: none; border-radius: 22px; padding: 0 16px; font-size: 17px; cursor: pointer;
+    background: #232323; color: #f5f5f5; white-space: nowrap;
   }
-  .nova {
-    background: none; border: 1px solid #333; color: #999; border-radius: 20px;
-    padding: 8px 18px; font-size: 15px; cursor: pointer; margin-top: 4px; white-space: nowrap;
-  }
+  .entrada button.mic.gravando { background: #22C55E; }
 </style>
 </head>
 <body>
   <h1>J A R V I S <span>●</span></h1>
-  <div class="status" id="status">Pronto para conversar</div>
+  <div class="status" id="status">Conectando...</div>
+  <div class="origem" id="origem"></div>
 
   <div class="orbe-area"><div class="anel"></div><div class="orbe"></div></div>
 
-  <div class="conversa" id="conversa"></div>
+  <button class="botao-parar" id="botaoParar">Parar de falar</button>
 
-  <div class="rodape">
-    <div class="linha-texto">
-      <input id="campoTexto" type="text" placeholder="Ou escreva aqui e aperte enter" autocomplete="off">
-      <button id="botaoEnviar">Enviar</button>
-    </div>
-    <button class="botao-mic" id="botaoMic">🎙️</button>
-    <div class="dica">Segure o botão, fale e solte</div>
-    <button class="nova" id="botaoNova">Nova conversa</button>
+  <div class="historico" id="historico"></div>
+
+  <div class="entrada">
+    <input id="campoTexto" type="text" placeholder="Perguntar algo ao Jarvis" autocomplete="off">
+    <button class="mic" id="botaoMic" title="Segure para falar">🎙️</button>
+    <button id="botaoEnviar">➤</button>
   </div>
 
 <script>
   const corpo = document.body;
   const status = document.getElementById('status');
-  const conversa = document.getElementById('conversa');
-  const botaoMic = document.getElementById('botaoMic');
+  const origem = document.getElementById('origem');
+  const historico = document.getElementById('historico');
   const campoTexto = document.getElementById('campoTexto');
+  const botaoMic = document.getElementById('botaoMic');
 
-  let gravador = null, pedacos = [], ocupado = false, tipoAudio = '';
+  let falaAtualDiv = null;
 
   function definirEstado(nome, texto) {
     corpo.className = nome;
     status.textContent = texto;
+    if (nome !== 'falando') origem.textContent = '';
   }
 
-  function bolha(classe, texto) {
+  function nomeOrigem(caminho) {
+    if (!caminho) return '';
+    if (caminho === 'painel') return 'Conversa no painel';
+    const partes = caminho.split('/');
+    return 'Terminal: ' + (partes[partes.length - 1] || caminho);
+  }
+
+  function adicionarFala(texto, cabecalho, classe) {
     const div = document.createElement('div');
-    div.className = 'bolha ' + classe;
-    div.textContent = texto;
-    conversa.appendChild(div);
+    div.className = 'fala ' + (classe || '');
+    if (cabecalho) {
+      const cab = document.createElement('div');
+      cab.className = 'cabecalho';
+      cab.textContent = cabecalho;
+      div.appendChild(cab);
+    }
+    div.appendChild(document.createTextNode(texto));
+    historico.appendChild(div);
+    while (historico.children.length > 30) historico.removeChild(historico.firstChild);
     div.scrollIntoView({ behavior: 'smooth', block: 'end' });
     return div;
   }
 
-  function tocar(base64) {
-    return new Promise((fim) => {
-      const audio = new Audio('data:audio/mp4;base64,' + base64);
-      definirEstado('falando', 'Falando...');
-      audio.onended = () => { definirEstado('', 'Pronto para conversar'); fim(); };
-      audio.onerror = () => { definirEstado('', 'Pronto para conversar'); fim(); };
-      audio.play().catch(() => { definirEstado('', 'Pronto para conversar'); fim(); });
-    });
+  function conectar() {
+    const fonte = new EventSource('/api/eventos');
+    fonte.onmessage = (e) => {
+      const evento = JSON.parse(e.data);
+      if (evento.tipo === 'conectado') definirEstado('', 'De olho no terminal');
+      if (evento.tipo === 'pensando') definirEstado('pensando', 'Pensando...');
+      if (evento.tipo === 'falando') {
+        definirEstado('falando', 'Falando');
+        origem.textContent = nomeOrigem(evento.origem);
+        if (falaAtualDiv) falaAtualDiv.classList.remove('atual');
+        const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        falaAtualDiv = adicionarFala(evento.texto, hora + '  ·  ' + nomeOrigem(evento.origem), 'atual');
+      }
+      if (evento.tipo === 'parado') {
+        if (falaAtualDiv) { falaAtualDiv.classList.remove('atual'); falaAtualDiv = null; }
+        definirEstado('', 'De olho no terminal');
+      }
+    };
+    fonte.onerror = () => {
+      definirEstado('desconectado', 'Jarvis desligado, tentando reconectar...');
+      fonte.close();
+      setTimeout(conectar, 3000);
+    };
   }
+  conectar();
 
-  async function processarResposta(resposta) {
-    const dados = await resposta.json();
-    if (dados.erro) {
-      definirEstado('', 'Pronto para conversar');
-      bolha('jarvis', dados.erro);
-      return;
+  document.getElementById('botaoParar').addEventListener('click', () => fetch('/api/parar', { method: 'POST' }));
+
+  async function enviarTexto() {
+    const texto = campoTexto.value.trim();
+    if (!texto) return;
+    campoTexto.value = '';
+    adicionarFala(texto, 'Você', 'eu');
+    try {
+      await fetch('/api/texto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texto })
+      });
+    } catch (e) {
+      definirEstado('desconectado', 'Falha na conexão com o Jarvis');
     }
-    if (dados.pergunta && !dados.jaExibida) bolha('eu', dados.pergunta);
-    bolha('jarvis', dados.resposta);
-    await tocar(dados.audio);
   }
+  document.getElementById('botaoEnviar').addEventListener('click', enviarTexto);
+  campoTexto.addEventListener('keydown', (e) => { if (e.key === 'Enter') enviarTexto(); });
 
+  let gravador = null, pedacos = [], tipoAudio = '';
   async function iniciarGravacao() {
-    if (ocupado) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       tipoAudio = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
@@ -143,12 +184,11 @@
       gravador.onstop = enviarAudio;
       gravador.start();
       botaoMic.classList.add('gravando');
-      definirEstado('ouvindo', 'Ouvindo você...');
+      definirEstado('', 'Ouvindo você...');
     } catch (e) {
       definirEstado('', 'Preciso da permissão do microfone');
     }
   }
-
   function pararGravacao() {
     if (gravador && gravador.state === 'recording') {
       gravador.stop();
@@ -156,58 +196,26 @@
     }
     botaoMic.classList.remove('gravando');
   }
-
   async function enviarAudio() {
     const blob = new Blob(pedacos, { type: tipoAudio });
-    if (blob.size < 2000) { definirEstado('', 'Áudio muito curto, tenta de novo'); return; }
-    ocupado = true;
-    definirEstado('pensando', 'Pensando...');
+    if (blob.size < 2000) { definirEstado('', 'Áudio muito curto'); return; }
+    definirEstado('pensando', 'Entendendo o áudio...');
     try {
       const resposta = await fetch('/api/conversar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/octet-stream', 'X-Audio-Type': tipoAudio },
         body: blob
       });
-      await processarResposta(resposta);
-    } catch (e) {
-      definirEstado('', 'Falha na conexão com o Jarvis');
-    }
-    ocupado = false;
-  }
-
-  async function enviarTexto() {
-    const texto = campoTexto.value.trim();
-    if (!texto || ocupado) return;
-    campoTexto.value = '';
-    ocupado = true;
-    bolha('eu', texto);
-    definirEstado('pensando', 'Pensando...');
-    try {
-      const resposta = await fetch('/api/texto', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ texto })
-      });
       const dados = await resposta.json();
-      if (dados.erro) { bolha('jarvis', dados.erro); definirEstado('', 'Pronto para conversar'); }
-      else { bolha('jarvis', dados.resposta); await tocar(dados.audio); }
+      if (dados.erro) { adicionarFala(dados.erro, '', ''); definirEstado('', 'De olho no terminal'); }
+      else if (dados.pergunta) adicionarFala(dados.pergunta, 'Você', 'eu');
     } catch (e) {
-      definirEstado('', 'Falha na conexão com o Jarvis');
+      definirEstado('desconectado', 'Falha na conexão com o Jarvis');
     }
-    ocupado = false;
   }
-
   botaoMic.addEventListener('pointerdown', iniciarGravacao);
   botaoMic.addEventListener('pointerup', pararGravacao);
   botaoMic.addEventListener('pointerleave', pararGravacao);
-  botaoMic.addEventListener('contextmenu', (e) => e.preventDefault());
-  document.getElementById('botaoEnviar').addEventListener('click', enviarTexto);
-  campoTexto.addEventListener('keydown', (e) => { if (e.key === 'Enter') enviarTexto(); });
-  document.getElementById('botaoNova').addEventListener('click', async () => {
-    await fetch('/api/nova', { method: 'POST' });
-    conversa.innerHTML = '';
-    definirEstado('', 'Nova conversa iniciada');
-  });
 </script>
 </body>
 </html>
