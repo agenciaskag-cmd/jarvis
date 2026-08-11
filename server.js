@@ -12,9 +12,11 @@ const HOME = os.homedir();
 const TMP = path.join(__dirname, 'tmp');
 const PUBLIC = path.join(__dirname, 'public');
 const MODELO_WHISPER = path.join(HOME, '.cache/whisper-cpp/ggml-large-v3-turbo.bin');
+const EDGE_TTS = path.join(__dirname, 'tts/bin/edge-tts');
+const VOZ_EDGE = 'pt-BR-AntonioNeural'; // brasileiro nativo (precisa de internet); Wylle rejeitou vozes multilingual por sotaque gringo
 const PIPER = path.join(__dirname, 'tts/bin/piper');
-const VOZ_PIPER = path.join(__dirname, 'vozes/pt_BR-faber-medium.onnx');
-const VOZ_RESERVA = 'Eddy (Português (Brasil))'; // usada só se o Piper falhar
+const VOZ_PIPER = path.join(__dirname, 'vozes/pt_BR-faber-medium.onnx'); // reserva offline
+const VOZ_RESERVA = 'Eddy (Português (Brasil))'; // último recurso se tudo falhar
 const LIMITE_FALA = 2000; // caracteres; acima disso corta na frase e avisa que o resto está na tela
 const MODELO_CLAUDE = 'sonnet';
 
@@ -27,6 +29,13 @@ const PERSONA = [
 ].join(' ');
 
 fs.mkdirSync(TMP, { recursive: true });
+
+const ARQUIVO_CONFIG = path.join(__dirname, 'config.json');
+let config = { velocidade: 1.0 };
+try { config = { ...config, ...JSON.parse(fs.readFileSync(ARQUIVO_CONFIG, 'utf8')) }; } catch {}
+function salvarConfig() {
+  try { fs.writeFileSync(ARQUIVO_CONFIG, JSON.stringify(config)); } catch {}
+}
 
 let sessaoClaude = null;          // contexto da conversa direta com o painel
 let filaFalas = [];               // anúncios aguardando a vez
@@ -80,22 +89,16 @@ async function processarFila() {
   while (filaFalas.length > 0) {
     const item = filaFalas.shift();
     transmitir({ tipo: 'falando', texto: item.texto, origem: item.origem });
-    const wav = path.join(TMP, 'fala.wav');
-    let gerou = false;
-    try {
-      await new Promise((fim, falha) => {
-        const piper = spawn(PIPER, ['-m', VOZ_PIPER, '--length-scale', '0.92', '-f', wav]);
-        piper.stdin.end(item.fala);
-        piper.on('exit', (cod) => cod === 0 ? fim() : falha(new Error('piper saiu com ' + cod)));
-        piper.on('error', falha);
-      });
-      gerou = true;
-    } catch (e) {
-      console.error('[Jarvis] piper falhou, usando voz reserva:', e.message);
+    let arquivo = await gerarAudio(item.fala);
+    if (arquivo && config.velocidade > 1.01) {
+      const rapido = path.join(TMP, 'fala-rapida.m4a');
+      const acelerou = await rodarComPrazo('/opt/homebrew/bin/ffmpeg',
+        ['-y', '-loglevel', 'error', '-i', arquivo, '-filter:a', 'atempo=' + config.velocidade.toFixed(2), '-c:a', 'aac', rapido], 30000);
+      if (acelerou && fs.existsSync(rapido) && fs.statSync(rapido).size > 1000) arquivo = rapido;
     }
     await new Promise((fim) => {
-      falaAtual = gerou
-        ? spawn('/usr/bin/afplay', [wav])
+      falaAtual = arquivo
+        ? spawn('/usr/bin/afplay', [arquivo])
         : spawn('/usr/bin/say', ['-v', VOZ_RESERVA, item.fala]);
       falaAtual.on('exit', () => { falaAtual = null; fim(); });
       falaAtual.on('error', () => { falaAtual = null; fim(); });
@@ -103,6 +106,30 @@ async function processarFila() {
     transmitir({ tipo: 'parado' });
   }
   processandoFila = false;
+}
+
+function rodarComPrazo(cmd, args, prazoMs, entradaStdin) {
+  return new Promise((resolve) => {
+    const proc = spawn(cmd, args);
+    const timer = setTimeout(() => { proc.kill(); resolve(false); }, prazoMs);
+    if (entradaStdin !== undefined) proc.stdin.end(entradaStdin);
+    proc.on('exit', (cod) => { clearTimeout(timer); resolve(cod === 0); });
+    proc.on('error', () => { clearTimeout(timer); resolve(false); });
+  });
+}
+
+// Tenta a voz escolhida pelo Wylle (Brian, online); sem internet cai pro Piper offline
+async function gerarAudio(fala) {
+  const mp3 = path.join(TMP, 'fala.mp3');
+  const wav = path.join(TMP, 'fala.wav');
+  if (await rodarComPrazo(EDGE_TTS, ['--voice', VOZ_EDGE, '--text', fala, '--write-media', mp3], 15000)) {
+    if (fs.existsSync(mp3) && fs.statSync(mp3).size > 1000) return mp3;
+  }
+  console.error('[Jarvis] voz online indisponível, usando a reserva offline');
+  if (await rodarComPrazo(PIPER, ['-m', VOZ_PIPER, '--length-scale', '0.92', '-f', wav], 60000, fala)) {
+    if (fs.existsSync(wav) && fs.statSync(wav).size > 1000) return wav;
+  }
+  return null;
 }
 
 async function transcrever(arquivoAudio) {
@@ -156,9 +183,19 @@ const servidor = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === 'POST' && caminho === '/api/velocidade') {
+      const corpo = await lerCorpo(req);
+      const { valor } = JSON.parse(corpo.toString('utf8'));
+      const v = Number(valor);
+      if (!Number.isFinite(v) || v < 1 || v > 3) return responderJson(res, 400, { erro: 'Velocidade deve ficar entre 1.0 e 3.0.' });
+      config.velocidade = Math.round(v * 10) / 10;
+      salvarConfig();
+      return responderJson(res, 200, { ok: true, velocidade: config.velocidade });
+    }
+
     if (req.method === 'GET' && caminho === '/api/eventos') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-      res.write('data: {"tipo":"conectado"}\n\n');
+      res.write('data: ' + JSON.stringify({ tipo: 'conectado', velocidade: config.velocidade }) + '\n\n');
       clientesSse.add(res);
       req.on('close', () => clientesSse.delete(res));
       return;

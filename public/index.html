@@ -42,6 +42,20 @@
   .fala .cabecalho { font-size: 11px; color: #46718f; margin-bottom: 6px; letter-spacing: .5px; }
   .fala.eu { border-left-color: #57e0a0; background: rgba(9, 30, 24, .55); }
 
+  .velocidade {
+    width: 100%; max-width: 640px; display: flex; align-items: center; gap: 10px;
+    padding: 6px 4px 0; flex-shrink: 0; color: #6f95b5; font-size: 13px;
+  }
+  .velocidade output { color: #35d6ff; font-weight: 700; min-width: 38px; text-align: right; font-size: 14px; }
+  .velocidade input[type=range] {
+    flex: 1; appearance: none; -webkit-appearance: none; height: 4px; border-radius: 4px;
+    background: linear-gradient(90deg, #0090cc, #123048); outline: none;
+  }
+  .velocidade input[type=range]::-webkit-slider-thumb {
+    appearance: none; -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: #35d6ff; box-shadow: 0 0 10px rgba(0, 190, 255, .6); cursor: pointer;
+  }
+
   .entrada { width: 100%; max-width: 640px; display: flex; gap: 8px; padding-top: 8px; flex-shrink: 0; }
   .entrada input {
     flex: 1; min-width: 0; padding: 11px 15px; border-radius: 22px;
@@ -67,6 +81,12 @@
   <button class="botao-parar" id="botaoParar">Parar de falar</button>
 
   <div class="historico" id="historico"></div>
+
+  <div class="velocidade">
+    <span>Velocidade</span>
+    <input id="controleVelocidade" type="range" min="1" max="3" step="0.1" value="1">
+    <output id="valorVelocidade">1.0x</output>
+  </div>
 
   <div class="entrada">
     <input id="campoTexto" type="text" placeholder="Perguntar algo ao Jarvis" autocomplete="off">
@@ -223,7 +243,13 @@
     const fonte = new EventSource('/api/eventos');
     fonte.onmessage = (e) => {
       const evento = JSON.parse(e.data);
-      if (evento.tipo === 'conectado') definirEstado('', 'De olho no terminal');
+      if (evento.tipo === 'conectado') {
+        definirEstado('', 'De olho no terminal');
+        if (evento.velocidade) {
+          controleVelocidade.value = evento.velocidade;
+          valorVelocidade.textContent = evento.velocidade.toFixed(1) + 'x';
+        }
+      }
       if (evento.tipo === 'pensando') definirEstado('pensando', 'Pensando...');
       if (evento.tipo === 'falando') {
         definirEstado('falando', 'Falando');
@@ -246,6 +272,22 @@
   conectar();
 
   document.getElementById('botaoParar').addEventListener('click', () => fetch('/api/parar', { method: 'POST' }));
+
+  const controleVelocidade = document.getElementById('controleVelocidade');
+  const valorVelocidade = document.getElementById('valorVelocidade');
+  let esperaVelocidade = null;
+  controleVelocidade.addEventListener('input', () => {
+    const v = Number(controleVelocidade.value);
+    valorVelocidade.textContent = v.toFixed(1) + 'x';
+    clearTimeout(esperaVelocidade);
+    esperaVelocidade = setTimeout(() => {
+      fetch('/api/velocidade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valor: v })
+      });
+    }, 250);
+  });
 
   async function enviarTexto() {
     const texto = campoTexto.value.trim();
