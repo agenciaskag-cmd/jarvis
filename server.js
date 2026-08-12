@@ -72,7 +72,7 @@ function limparParaFala(texto) {
   return texto
     .replace(/wylle/gi, 'Uíli') // o nome escreve-se Wylle mas pronuncia-se U-I-LI
     .replace(/jarvis/gi, 'Járvis') // tônica no A: JÁR-VIZ
-    .replace(/evoluwill/gi, 'Evolu-uíl') // Agência EvoluWill fala-se Evolu-uíl
+    .replace(/evoluwill/gi, 'Evoluiu') // Agência EvoluWill fala-se "e-vo-lu-iu" (regra do Wylle)
     .replace(/```[\s\S]*?```/g, ' trecho de código na tela ')
     .replace(/\|[^\n]*\|/g, ' ')
     .replace(/[*_#`>~]/g, '')
