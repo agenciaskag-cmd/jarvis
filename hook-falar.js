@@ -11,11 +11,29 @@ process.stdin.on('end', () => {
     if (!dados.transcript_path || !fs.existsSync(dados.transcript_path)) process.exit(0);
 
     const linhas = fs.readFileSync(dados.transcript_path, 'utf8').trim().split('\n');
+
+    // REGRA DO WYLLE: Claude/Claudinho = só escrita; Jarvis = voz.
+    // Só fala se o último pedido do Wylle mencionar o Jarvis.
+    let pediuJarvis = false;
+    for (let i = linhas.length - 1; i >= 0; i--) {
+      let registro;
+      try { registro = JSON.parse(linhas[i]); } catch { continue; }
+      if (registro.type !== 'user' || !registro.message) continue;
+      let textoUsuario = '';
+      if (typeof registro.message.content === 'string') textoUsuario = registro.message.content;
+      else if (Array.isArray(registro.message.content)) {
+        textoUsuario = registro.message.content.filter((p) => p.type === 'text' && p.text).map((p) => p.text).join(' ');
+      }
+      if (!textoUsuario.trim()) continue; // resultado de ferramenta, não é o pedido do Wylle
+      pediuJarvis = /jarvis/i.test(textoUsuario);
+      break;
+    }
+    if (!pediuJarvis) process.exit(0);
+
     let texto = '';
     for (let i = linhas.length - 1; i >= 0; i--) {
       let registro;
       try { registro = JSON.parse(linhas[i]); } catch { continue; }
-      if (registro.type === 'user') break; // não passar do turno atual
       if (registro.type !== 'assistant' || !registro.message || !Array.isArray(registro.message.content)) continue;
       const partes = registro.message.content.filter((p) => p.type === 'text' && p.text).map((p) => p.text);
       if (partes.length === 0) continue;
