@@ -7,4 +7,4 @@ if ! lsof -tiTCP:3080 -sTCP:LISTEN >/dev/null 2>&1; then
     (cd "$(dirname "$0")" && nohup "$NODE_BIN" server.js > jarvis.log 2>&1 &)
   sleep 1.5
 fi
-open -na "Google Chrome" --args --app="http://localhost:3080" --window-size=560,330
+open -na "Google Chrome" --args --app="http://localhost:3080" --window-size=520,235
