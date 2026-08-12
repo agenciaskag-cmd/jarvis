@@ -29,7 +29,7 @@ const VOZ_EDGE = 'pt-BR-AntonioNeural'; // brasileiro nativo (precisa de interne
 const MPV = acharPrograma('mpv');
 const MPV_SOCK = path.join(TMP, 'mpv.sock');
 const LIMITE_FALA = 2000; // caracteres; acima disso corta na frase e avisa que o resto está na tela
-const MODELO_CLAUDE = 'sonnet';
+const MODELO_CLAUDE = 'haiku'; // o mais rápido: o painel é pra pergunta e resposta ágil
 
 const PERSONA = [
   'Você é o Jarvis, assistente pessoal de voz do Wylle.',
@@ -52,6 +52,7 @@ let sessaoClaude = null;          // contexto da conversa direta com o painel
 let filaFalas = [];               // anúncios aguardando a vez
 let falaAtual = null;             // processo de áudio em andamento
 let estadoFala = null;            // o que está sendo falado agora (pra painéis que conectam no meio)
+let cancelarFala = false;         // ligado pelo botão Parar de falar
 let processandoFila = false;
 let ultimaFalaPorOrigem = new Map(); // evita repetir a mesma resposta (resume/clear disparam o hook de novo)
 const clientesSse = new Set();
@@ -98,15 +99,36 @@ function enfileirarFala(texto, origem) {
   processarFila();
 }
 
+// Fatia o texto em pedaços por frase: o primeiro é curto pra fala começar em ~1 segundo,
+// os seguintes são gerados em paralelo enquanto o anterior toca
+function dividirEmPedacos(texto) {
+  const frases = texto.match(/[^.!?…]+[.!?…]+\s*|[^.!?…]+$/g) || [texto];
+  const pedacos = [];
+  let atual = '';
+  for (const f of frases) {
+    const limite = pedacos.length === 0 ? 150 : 320;
+    if (atual && (atual + f).length > limite) { pedacos.push(atual.trim()); atual = f; }
+    else atual += f;
+  }
+  if (atual.trim()) pedacos.push(atual.trim());
+  return pedacos;
+}
+
 async function processarFila() {
   if (processandoFila) return;
   processandoFila = true;
   while (filaFalas.length > 0) {
     const item = filaFalas.shift();
+    cancelarFala = false;
     estadoFala = { tipo: 'falando', texto: item.texto, origem: item.origem };
     transmitir(estadoFala);
-    const arquivo = await gerarAudio(item.fala);
-    if (arquivo) {
+    const pedacos = dividirEmPedacos(item.fala);
+    let proximaGeracao = gerarAudio(pedacos[0], 0);
+    for (let i = 0; i < pedacos.length; i++) {
+      const arquivo = await proximaGeracao;
+      if (i + 1 < pedacos.length) proximaGeracao = gerarAudio(pedacos[i + 1], i + 1);
+      if (cancelarFala) break;
+      if (!arquivo) continue;
       await new Promise((fim) => {
         // mpv com canal de comando: a velocidade muda AO VIVO no meio da fala
         falaAtual = spawn(MPV, ['--no-video', '--really-quiet', '--input-ipc-server=' + MPV_SOCK,
@@ -150,15 +172,15 @@ function rodarComPrazo(cmd, args, prazoMs, entradaStdin) {
 }
 
 // REGRA DO WYLLE: NUNCA trocar a voz. É o Antonio ou silêncio (o texto fica no painel).
-async function gerarAudio(fala) {
-  const mp3 = path.join(TMP, 'fala.mp3');
-  for (let tentativa = 1; tentativa <= 4; tentativa++) {
-    if (await rodarComPrazo(EDGE_TTS, ['--voice', VOZ_EDGE, '--text', fala, '--write-media', mp3], 25000)) {
+async function gerarAudio(fala, indice) {
+  const mp3 = path.join(TMP, 'fala-' + (indice || 0) + '.mp3');
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    if (await rodarComPrazo(EDGE_TTS, ['--voice', VOZ_EDGE, '--text', fala, '--write-media', mp3], 15000)) {
       if (fs.existsSync(mp3) && fs.statSync(mp3).size > 1000) return mp3;
     }
-    if (tentativa < 4) await new Promise((f) => setTimeout(f, 1500 * tentativa));
+    if (tentativa < 3) await new Promise((f) => setTimeout(f, 800 * tentativa));
   }
-  console.error('[Jarvis] voz indisponível após 4 tentativas; fala pulada (regra: nunca trocar a voz)');
+  console.error('[Jarvis] voz indisponível após 3 tentativas; pedaço pulado (regra: nunca trocar a voz)');
   return null;
 }
 
@@ -249,6 +271,7 @@ const servidor = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && caminho === '/api/parar') {
       filaFalas = [];
+      cancelarFala = true;
       if (falaAtual) falaAtual.kill();
       transmitir({ tipo: 'parado' });
       return responderJson(res, 200, { ok: true });
