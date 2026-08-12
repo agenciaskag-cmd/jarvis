@@ -21,14 +21,14 @@
   .origem { font-size: 11px; color: #3d5a75; text-align: center; flex-shrink: 0; min-height: 13px; }
   @media (max-height: 280px) { .origem { display: none; } }
 
-  .corpo { flex: 1; display: flex; align-items: center; gap: 14px; min-height: 0; }
-  .lateral { flex: 1; display: flex; min-width: 0; }
-  .lateral.esq { justify-content: flex-start; }
-  .lateral.dir { flex-direction: column; justify-content: center; gap: 7px; }
+  .corpo { flex: 1; display: flex; align-items: center; gap: 20px; min-height: 0; }
+  .lateral { flex: 1 1 0; display: flex; justify-content: center; min-width: 0; }
+  .lateral.dir { flex-direction: column; align-items: center; gap: 8px; }
+  .lateral.dir > * { width: 100%; max-width: 300px; }
   #orbe { height: calc(100vh - 34px); width: auto; flex-shrink: 0; }
 
   .botao-parar {
-    border-radius: 18px; padding: 9px 20px;
+    border-radius: 20px; padding: 11px 20px; width: 80%; max-width: 300px;
     background: rgba(0, 90, 140, .12); color: #46718f; border: 1px solid rgba(70, 130, 180, .3);
     font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
     transition: all .25s;
@@ -43,6 +43,15 @@
     display: flex; flex-direction: column; gap: 8px; padding: 2px;
   }
   @media (max-height: 420px) { .historico { display: none; } }
+
+  /* Janela em pé: tudo empilhado, esfera no meio */
+  @media (orientation: portrait) {
+    .corpo { flex-direction: column; justify-content: center; gap: 14px; }
+    .lateral { flex: 0 0 auto; width: 100%; }
+    .botao-parar { width: 80%; }
+    #orbe { height: auto; width: min(80vw, 52vh); }
+    .historico { max-height: 22vh; }
+  }
   .fala {
     background: rgba(10, 25, 42, .55); border: 1px solid rgba(70, 130, 180, .18);
     border-left: 3px solid #0090cc;
@@ -111,6 +120,8 @@
 
 <script>
   // ---------- Esfera 3D de partículas ----------
+  // Dois estilos: "nebula" (versão A, padrão) e "reator" (versão B, Homem de Ferro) via ?estilo=reator
+  const ESTILO = new URLSearchParams(location.search).get('estilo') === 'reator' ? 'reator' : 'nebula';
   const tela = document.getElementById('orbe');
   const ctx = tela.getContext('2d');
   const CENTRO = 230, RAIO = 180;
@@ -136,6 +147,87 @@
 
   let rotY = 0, rotX = 0.25, t = 0;
 
+  // Versão B: reator do Homem de Ferro — núcleo duro, anel segmentado e órbitas de energia marcadas
+  function desenharReator(cinza, pulso) {
+    const cor = cinza ? '150,160,170' : '80,210,255';
+    const corForte = cinza ? '190,200,210' : '190,245,255';
+
+    // brilho ambiente
+    const ambiente = ctx.createRadialGradient(CENTRO, CENTRO, 10, CENTRO, CENTRO, RAIO * 1.15);
+    ambiente.addColorStop(0, 'rgba(' + cor + ',' + (0.18 + energia * 0.2) + ')');
+    ambiente.addColorStop(1, 'rgba(' + cor + ',0)');
+    ctx.fillStyle = ambiente;
+    ctx.fillRect(0, 0, 460, 460);
+
+    // núcleo duro
+    const nucleoR = RAIO * 0.28 * pulso;
+    const nucleo = ctx.createRadialGradient(CENTRO, CENTRO, 1, CENTRO, CENTRO, nucleoR);
+    nucleo.addColorStop(0, 'rgba(255,255,255,' + (0.95 + energia * 0.05) + ')');
+    nucleo.addColorStop(0.55, 'rgba(' + corForte + ',' + (0.85 + energia * 0.15) + ')');
+    nucleo.addColorStop(0.85, 'rgba(' + cor + ',' + (0.55 + energia * 0.3) + ')');
+    nucleo.addColorStop(1, 'rgba(' + cor + ',0.05)');
+    ctx.fillStyle = nucleo;
+    ctx.beginPath(); ctx.arc(CENTRO, CENTRO, nucleoR, 0, 6.29); ctx.fill();
+
+    // anel segmentado estilo bobinas do reator, girando no plano da tela
+    ctx.save();
+    ctx.translate(CENTRO, CENTRO);
+    ctx.rotate(t * 0.25);
+    ctx.shadowColor = 'rgba(' + cor + ',.9)';
+    ctx.shadowBlur = 14 + energia * 14;
+    ctx.strokeStyle = 'rgba(' + cor + ',' + (0.7 + energia * 0.3) + ')';
+    ctx.lineWidth = 8 + energia * 3;
+    const segmentos = 10, folga = 0.1;
+    for (let s = 0; s < segmentos; s++) {
+      const a0 = (s / segmentos) * 6.2832 + folga;
+      const a1 = ((s + 1) / segmentos) * 6.2832 - folga;
+      ctx.beginPath(); ctx.arc(0, 0, RAIO * 0.44 * pulso, a0, a1); ctx.stroke();
+    }
+    ctx.restore();
+
+    // órbitas de energia em 3D com cometas
+    const orbitas = [
+      { inc: 0.5, vel: 0.6, raio: 0.72 },
+      { inc: -0.9, vel: -0.42, raio: 0.86 },
+      { inc: 1.25, vel: 0.3, raio: 0.99 }
+    ];
+    const cy = Math.cos(rotY), sy = Math.sin(rotY);
+    for (const o of orbitas) {
+      ctx.beginPath();
+      for (let i = 0; i <= 72; i++) {
+        const a = (i / 72) * 6.2832;
+        let x = Math.cos(a) * o.raio, z = Math.sin(a) * o.raio;
+        let y = z * Math.sin(o.inc); z = z * Math.cos(o.inc);
+        const x2 = x * cy - z * sy, z2 = x * sy + z * cy;
+        const persp = 1 / (1.65 - z2 * 0.45);
+        const px = CENTRO + x2 * RAIO * persp * 1.28;
+        const py = CENTRO + y * RAIO * persp * 1.28;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = 'rgba(' + cor + ',' + (0.28 + energia * 0.35) + ')';
+      ctx.lineWidth = 2.2;
+      ctx.shadowColor = 'rgba(' + cor + ',.8)';
+      ctx.shadowBlur = 8 + energia * 10;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // cometa correndo a órbita
+      const ac = t * o.vel * 2.4;
+      let x = Math.cos(ac) * o.raio, z = Math.sin(ac) * o.raio;
+      let y = z * Math.sin(o.inc); z = z * Math.cos(o.inc);
+      const x2 = x * cy - z * sy, z2 = x * sy + z * cy;
+      const persp = 1 / (1.65 - z2 * 0.45);
+      const px = CENTRO + x2 * RAIO * persp * 1.28;
+      const py = CENTRO + y * RAIO * persp * 1.28;
+      const brilho = ctx.createRadialGradient(px, py, 0, px, py, 10 + energia * 8);
+      brilho.addColorStop(0, 'rgba(255,255,255,' + (0.8 + energia * 0.2) + ')');
+      brilho.addColorStop(0.35, 'rgba(' + corForte + ',.7)');
+      brilho.addColorStop(1, 'rgba(' + cor + ',0)');
+      ctx.fillStyle = brilho;
+      ctx.beginPath(); ctx.arc(px, py, 10 + energia * 8, 0, 6.29); ctx.fill();
+    }
+  }
+
   function desenhar() {
     t += 0.016;
     const alvoEnergia = estadoOrbe === 'falando' ? 1 : (estadoOrbe === 'pensando' ? 0.55 : 0.18);
@@ -148,6 +240,8 @@
     const pulso = 1 + Math.sin(t * (4 + energia * 6)) * 0.045 * energia;
 
     ctx.clearRect(0, 0, 460, 460);
+
+    if (ESTILO === 'reator') { desenharReator(cinza, pulso); requestAnimationFrame(desenhar); return; }
 
     // núcleo brilhante
     const nucleo = ctx.createRadialGradient(CENTRO, CENTRO, 2, CENTRO, CENTRO, RAIO * 1.05 * pulso);
