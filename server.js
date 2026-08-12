@@ -12,10 +12,21 @@ const PORTA = 3080;
 const HOME = os.homedir();
 const TMP = path.join(__dirname, 'tmp');
 const PUBLIC = path.join(__dirname, 'public');
+// acha programas tanto em Mac Apple Silicon (/opt/homebrew) quanto Intel (/usr/local)
+function acharPrograma(nome) {
+  for (const base of ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin']) {
+    const caminho = path.join(base, nome);
+    if (fs.existsSync(caminho)) return caminho;
+  }
+  return nome;
+}
+
 const MODELO_WHISPER = path.join(HOME, '.cache/whisper-cpp/ggml-large-v3-turbo.bin');
+const WHISPER = acharPrograma('whisper-cli');
+const FFMPEG = acharPrograma('ffmpeg');
 const EDGE_TTS = path.join(__dirname, 'tts/bin/edge-tts');
 const VOZ_EDGE = 'pt-BR-AntonioNeural'; // brasileiro nativo (precisa de internet); Wylle rejeitou vozes multilingual por sotaque gringo
-const MPV = '/opt/homebrew/bin/mpv';
+const MPV = acharPrograma('mpv');
 const MPV_SOCK = path.join(TMP, 'mpv.sock');
 const LIMITE_FALA = 2000; // caracteres; acima disso corta na frase e avisa que o resto está na tela
 const MODELO_CLAUDE = 'sonnet';
@@ -151,9 +162,12 @@ async function gerarAudio(fala) {
 }
 
 async function transcrever(arquivoAudio) {
+  if (!fs.existsSync(MODELO_WHISPER)) {
+    throw new Error('O microfone do painel não está instalado neste Mac. Use o campo de texto, ou peça ao Claude pra instalar o whisper.');
+  }
   const wav = path.join(TMP, 'entrada.wav');
-  await rodar('/opt/homebrew/bin/ffmpeg', ['-y', '-loglevel', 'error', '-i', arquivoAudio, '-ar', '16000', '-ac', '1', wav]);
-  const texto = await rodar('/opt/homebrew/bin/whisper-cli', ['-m', MODELO_WHISPER, '-l', 'pt', '-f', wav, '-np', '-nt'], { timeout: 180000 });
+  await rodar(FFMPEG, ['-y', '-loglevel', 'error', '-i', arquivoAudio, '-ar', '16000', '-ac', '1', wav]);
+  const texto = await rodar(WHISPER, ['-m', MODELO_WHISPER, '-l', 'pt', '-f', wav, '-np', '-nt'], { timeout: 180000 });
   return texto.trim();
 }
 
