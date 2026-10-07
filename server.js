@@ -51,6 +51,7 @@ function salvarConfig() {
 
 let sessaoClaude = null;          // contexto da conversa direta com o painel
 let filaFalas = [];               // anúncios aguardando a vez
+let ultimaFala = null;             // guardada pro botão Ouvir de novo
 let falaAtual = null;             // processo de áudio em andamento
 let estadoFala = null;            // o que está sendo falado agora (pra painéis que conectam no meio)
 let cancelarFala = false;         // ligado pelo botão Parar de falar
@@ -124,6 +125,7 @@ async function processarFila() {
   processandoFila = true;
   while (filaFalas.length > 0) {
     const item = filaFalas.shift();
+    ultimaFala = item;
     cancelarFala = false;
     estadoFala = { tipo: 'falando', texto: item.texto, origem: item.origem };
     transmitir(estadoFala);
@@ -133,9 +135,9 @@ async function processarFila() {
       const arquivo = await proximaGeracao;
       if (i + 1 < pedacos.length) proximaGeracao = gerarAudio(pedacos[i + 1], i + 1);
       if (cancelarFala) break;
-      // o painel mostra cada trecho na hora em que ele começa a ser falado
+      // o painel mostra cada trecho na hora em que ele começa a ser falado, com o volume real da voz
       estadoFala.trecho = pedacos[i];
-      transmitir({ tipo: 'trecho', texto: pedacos[i] });
+      transmitir({ tipo: 'trecho', texto: pedacos[i], envelope: arquivo ? await envelopeDe(arquivo) : null });
       if (!arquivo) continue;
       await new Promise((fim) => {
         // mpv com canal de comando: a velocidade muda AO VIVO no meio da fala
@@ -176,6 +178,26 @@ function rodarComPrazo(cmd, args, prazoMs, entradaStdin) {
       resolve(cod === 0);
     });
     proc.on('error', (e) => { clearTimeout(timer); console.error('[Jarvis] ' + path.basename(cmd) + ': ' + e.message); resolve(false); });
+  });
+}
+
+// Volume da fala a cada 50 ms (0 a 99): as barras do painel acompanham a voz de verdade
+function envelopeDe(arquivo) {
+  return new Promise((resolve) => {
+    execFile(FFMPEG, ['-v', 'error', '-i', arquivo, '-ac', '1', '-ar', '8000', '-f', 's16le', '-'],
+      { encoding: 'buffer', maxBuffer: 1024 * 1024 * 50, timeout: 8000 }, (err, pcm) => {
+        if (err || !pcm || pcm.length < 1600) return resolve(null);
+        const JANELA = 400, volumes = [];
+        let maior = 1;
+        for (let i = 0; i + JANELA * 2 <= pcm.length; i += JANELA * 2) {
+          let soma = 0;
+          for (let j = 0; j < JANELA; j++) { const a = pcm.readInt16LE(i + j * 2); soma += a * a; }
+          const rms = Math.sqrt(soma / JANELA);
+          volumes.push(rms);
+          if (rms > maior) maior = rms;
+        }
+        resolve(volumes.map((v) => Math.round((v / maior) * 99)));
+      });
   });
 }
 
@@ -247,9 +269,9 @@ const servidor = http.createServer(async (req, res) => {
     }
 
     // painel anterior (nébula sozinha) continua disponível em /v1
-    if (req.method === 'GET' && caminho === '/v1') {
+    if (req.method === 'GET' && (caminho === '/v1' || caminho === '/v2')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(fs.readFileSync(path.join(PUBLIC, 'v1.html')));
+      res.end(fs.readFileSync(path.join(PUBLIC, caminho.slice(1) + '.html')));
       return;
     }
 
@@ -288,6 +310,12 @@ const servidor = http.createServer(async (req, res) => {
       if (ultimaFalaPorOrigem.get(origem || '') === texto) return responderJson(res, 200, { ok: true, repetida: true });
       ultimaFalaPorOrigem.set(origem || '', texto);
       enfileirarFala(texto, origem);
+      return responderJson(res, 200, { ok: true });
+    }
+
+    if (req.method === 'POST' && caminho === '/api/repetir') {
+      if (!ultimaFala) return responderJson(res, 200, { ok: false });
+      if (!processandoFila && filaFalas.length === 0) { filaFalas.push(ultimaFala); processarFila(); }
       return responderJson(res, 200, { ok: true });
     }
 
