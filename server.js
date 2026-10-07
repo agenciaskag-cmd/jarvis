@@ -12,6 +12,7 @@ const PORTA = 3080;
 const HOME = os.homedir();
 const TMP = path.join(__dirname, 'tmp');
 const PUBLIC = path.join(__dirname, 'public');
+const ROSTO = path.join(PUBLIC, 'rosto.jpg');
 // acha programas tanto em Mac Apple Silicon (/opt/homebrew) quanto Intel (/usr/local)
 function acharPrograma(nome) {
   for (const base of ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin']) {
@@ -69,11 +70,15 @@ function transmitir(evento) {
   for (const cliente of clientesSse) cliente.write(linha);
 }
 
-function limparParaFala(texto) {
+function pronunciar(texto) {
   return texto
     .replace(/wylle/gi, 'Uíli') // o nome escreve-se Wylle mas pronuncia-se U-I-LI
     .replace(/jarvis/gi, 'Járvis') // tônica no A: JÁR-VIZ
-    .replace(/evoluwill/gi, 'Evoluiu') // Agência EvoluWill fala-se "e-vo-lu-iu" (regra do Wylle)
+    .replace(/evoluwill/gi, 'Evoluiu'); // Agência EvoluWill fala-se "e-vo-lu-iu" (regra do Wylle)
+}
+
+function limparParaFala(texto) {
+  return texto
     .replace(/```[\s\S]*?```/g, ' trecho de código na tela ')
     .replace(/\|[^\n]*\|/g, ' ')
     .replace(/[*_#`>~]/g, '')
@@ -128,6 +133,9 @@ async function processarFila() {
       const arquivo = await proximaGeracao;
       if (i + 1 < pedacos.length) proximaGeracao = gerarAudio(pedacos[i + 1], i + 1);
       if (cancelarFala) break;
+      // o painel mostra cada trecho na hora em que ele começa a ser falado
+      estadoFala.trecho = pedacos[i];
+      transmitir({ tipo: 'trecho', texto: pedacos[i] });
       if (!arquivo) continue;
       await new Promise((fim) => {
         // mpv com canal de comando: a velocidade muda AO VIVO no meio da fala
@@ -175,7 +183,7 @@ function rodarComPrazo(cmd, args, prazoMs, entradaStdin) {
 async function gerarAudio(fala, indice) {
   const mp3 = path.join(TMP, 'fala-' + (indice || 0) + '.mp3');
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
-    if (await rodarComPrazo(EDGE_TTS, ['--voice', VOZ_EDGE, '--text', fala, '--write-media', mp3], 15000)) {
+    if (await rodarComPrazo(EDGE_TTS, ['--voice', VOZ_EDGE, '--text', pronunciar(fala), '--write-media', mp3], 15000)) {
       if (fs.existsSync(mp3) && fs.statSync(mp3).size > 1000) return mp3;
     }
     if (tentativa < 3) await new Promise((f) => setTimeout(f, 800 * tentativa));
@@ -238,6 +246,20 @@ const servidor = http.createServer(async (req, res) => {
       return;
     }
 
+    // painel anterior (nébula sozinha) continua disponível em /v1
+    if (req.method === 'GET' && caminho === '/v1') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(fs.readFileSync(path.join(PUBLIC, 'v1.html')));
+      return;
+    }
+
+    // foto opcional pro centro do orbe: basta salvar como public/rosto.jpg
+    if (req.method === 'GET' && caminho === '/rosto.jpg' && fs.existsSync(ROSTO)) {
+      res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'no-cache' });
+      res.end(fs.readFileSync(ROSTO));
+      return;
+    }
+
     if (req.method === 'POST' && caminho === '/api/velocidade') {
       const corpo = await lerCorpo(req);
       const { valor } = JSON.parse(corpo.toString('utf8'));
@@ -251,7 +273,7 @@ const servidor = http.createServer(async (req, res) => {
 
     if (req.method === 'GET' && caminho === '/api/eventos') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-      res.write('data: ' + JSON.stringify({ tipo: 'conectado', velocidade: config.velocidade }) + '\n\n');
+      res.write('data: ' + JSON.stringify({ tipo: 'conectado', velocidade: config.velocidade, rosto: fs.existsSync(ROSTO) }) + '\n\n');
       if (estadoFala) res.write('data: ' + JSON.stringify(estadoFala) + '\n\n');
       clientesSse.add(res);
       req.on('close', () => clientesSse.delete(res));

@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jarvis</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(ellipse at 78% 55%, #0a1626 0%, #05080f 55%, #030509 100%);
+    color: #eaf6ff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex; flex-direction: column;
+    padding: 4px 12px 4px; overflow: hidden;
+  }
+  .topo { display: flex; align-items: baseline; justify-content: center; gap: 12px; flex-shrink: 0; }
+  h1 { font-size: 15px; letter-spacing: 5px; font-weight: 700; color: #dff3ff; text-shadow: 0 0 18px rgba(0,180,255,.5); }
+  h1 span { color: #00d0ff; }
+  .status { font-size: 13px; color: #6f95b5; }
+  .origem { font-size: 11px; color: #3d5a75; text-align: center; flex-shrink: 0; min-height: 13px; }
+  @media (max-height: 280px) { .origem { display: none; } }
+
+  .corpo { flex: 1; display: flex; align-items: center; gap: 20px; min-height: 0; }
+  .lateral { flex: 1 1 0; display: flex; justify-content: center; min-width: 0; }
+  .lateral.dir { flex-direction: column; align-items: center; gap: 8px; }
+  .lateral.dir > * { width: 100%; max-width: 300px; }
+  #orbe { height: calc(100vh - 34px); width: auto; flex-shrink: 0; }
+
+  .botao-parar {
+    border-radius: 20px; padding: 11px 20px; width: 80%; max-width: 300px;
+    background: rgba(0, 90, 140, .12); color: #46718f; border: 1px solid rgba(70, 130, 180, .3);
+    font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap;
+    transition: all .25s;
+  }
+  body.falando .botao-parar {
+    background: rgba(0, 90, 140, .25); color: #35d6ff; border-color: rgba(0, 190, 255, .55);
+    box-shadow: 0 0 14px rgba(0, 170, 230, .25);
+  }
+
+  .historico {
+    flex: 0 1 auto; width: 100%; overflow-y: auto; max-height: 30vh;
+    display: flex; flex-direction: column; gap: 8px; padding: 2px;
+  }
+  @media (max-height: 420px) { .historico { display: none; } }
+
+  /* Janela em pé: tudo empilhado, esfera no meio */
+  @media (orientation: portrait) {
+    .corpo { flex-direction: column; justify-content: center; gap: 14px; }
+    .lateral { flex: 0 0 auto; width: 100%; }
+    .botao-parar { width: 80%; }
+    #orbe { height: auto; width: min(80vw, 52vh); }
+    .historico { max-height: 22vh; }
+  }
+  .fala {
+    background: rgba(10, 25, 42, .55); border: 1px solid rgba(70, 130, 180, .18);
+    border-left: 3px solid #0090cc;
+    border-radius: 10px; padding: 12px 14px; font-size: 15px; line-height: 1.55;
+    color: #b9d4e8; white-space: pre-wrap; word-break: break-word;
+  }
+  .fala.atual { border-left-color: #35d6ff; color: #eaf6ff; background: rgba(12, 34, 56, .75); box-shadow: 0 0 22px rgba(0, 160, 230, .12); }
+  .fala .cabecalho { font-size: 11px; color: #46718f; margin-bottom: 6px; letter-spacing: .5px; }
+  .fala.eu { border-left-color: #57e0a0; background: rgba(9, 30, 24, .55); }
+
+  .velocidade {
+    width: 100%; display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0; color: #6f95b5; font-size: 12px;
+  }
+  .velocidade output { color: #35d6ff; font-weight: 700; min-width: 38px; text-align: right; font-size: 14px; }
+  .velocidade input[type=range] {
+    flex: 1; appearance: none; -webkit-appearance: none; height: 4px; border-radius: 4px;
+    background: linear-gradient(90deg, #0090cc, #123048); outline: none;
+  }
+  .velocidade input[type=range]::-webkit-slider-thumb {
+    appearance: none; -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: #35d6ff; box-shadow: 0 0 10px rgba(0, 190, 255, .6); cursor: pointer;
+  }
+
+  .entrada { width: 100%; display: flex; gap: 6px; flex-shrink: 0; }
+  .entrada input {
+    flex: 1; min-width: 0; padding: 8px 12px; border-radius: 18px;
+    border: 1px solid rgba(70, 130, 180, .35);
+    background: rgba(8, 20, 34, .8); color: #eaf6ff; font-size: 13px; outline: none;
+  }
+  .entrada input::placeholder { color: #4a6a86; }
+  .entrada input:focus { border-color: #00b6e8; box-shadow: 0 0 14px rgba(0, 170, 230, .2); }
+  .entrada button {
+    border: none; border-radius: 18px; padding: 0 12px; font-size: 14px; cursor: pointer;
+    background: rgba(20, 45, 70, .9); color: #cfeaff; white-space: nowrap;
+  }
+  .entrada button.mic.gravando { background: #0aa46a; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <h1>J A R V I S <span>●</span></h1>
+    <div class="status" id="status">Conectando...</div>
+  </div>
+  <div class="origem" id="origem"></div>
+
+  <div class="corpo">
+    <div class="lateral esq">
+      <button class="botao-parar" id="botaoParar">Parar de falar</button>
+    </div>
+    <canvas id="orbe" width="460" height="460"></canvas>
+    <div class="lateral dir">
+      <div class="velocidade">
+        <span>Velocidade</span>
+        <input id="controleVelocidade" type="range" min="1" max="3" step="0.1" value="1">
+        <output id="valorVelocidade">1.0x</output>
+      </div>
+      <div class="entrada">
+        <input id="campoTexto" type="text" placeholder="Pergunte ao Jarvis" autocomplete="off">
+        <button class="mic" id="botaoMic" title="Segure para falar">🎙️</button>
+        <button id="botaoEnviar">➤</button>
+      </div>
+      <div class="historico" id="historico"></div>
+    </div>
+  </div>
+
+<script>
+  // ---------- Esfera 3D de partículas ----------
+  // Dois estilos: "nebula" (versão A, padrão) e "reator" (versão B, Homem de Ferro) via ?estilo=reator
+  const ESTILO = new URLSearchParams(location.search).get('estilo') === 'reator' ? 'reator' : 'nebula';
+  const tela = document.getElementById('orbe');
+  const ctx = tela.getContext('2d');
+  const CENTRO = 230, RAIO = 180;
+  let estadoOrbe = 'parado'; // parado | falando | pensando | desconectado
+  let energia = 0;           // 0 a 1, sobe quando fala
+
+  // pontos distribuídos na esfera (espiral de Fibonacci) em três camadas
+  const pontos = [];
+  const N = 220;
+  for (let i = 0; i < N; i++) {
+    const y = 1 - (i / (N - 1)) * 2;
+    const r = Math.sqrt(1 - y * y);
+    const ang = i * 2.39996323;
+    const camada = i % 3 === 0 ? 1 : (i % 3 === 1 ? 0.78 : 0.58);
+    pontos.push({ x: Math.cos(ang) * r, y, z: Math.sin(ang) * r, camada, fase: Math.random() * 6.28 });
+  }
+  // anéis orbitais
+  const aneis = [
+    { inclinacao: 0.45, vel: 0.35, raio: 1.12 },
+    { inclinacao: -0.6, vel: -0.22, raio: 1.22 },
+    { inclinacao: 1.1, vel: 0.16, raio: 1.32 }
+  ];
+
+  let rotY = 0, rotX = 0.25, t = 0;
+
+  // Versão B: reator do Homem de Ferro — núcleo duro, anel segmentado e órbitas de energia marcadas
+  function desenharReator(cinza, pulso) {
+    const cor = cinza ? '150,160,170' : '80,210,255';
+    const corForte = cinza ? '190,200,210' : '190,245,255';
+
+    // brilho ambiente
+    const ambiente = ctx.createRadialGradient(CENTRO, CENTRO, 10, CENTRO, CENTRO, RAIO * 1.15);
+    ambiente.addColorStop(0, 'rgba(' + cor + ',' + (0.18 + energia * 0.2) + ')');
+    ambiente.addColorStop(1, 'rgba(' + cor + ',0)');
+    ctx.fillStyle = ambiente;
+    ctx.fillRect(0, 0, 460, 460);
+
+    // núcleo duro
+    const nucleoR = RAIO * 0.28 * pulso;
+    const nucleo = ctx.createRadialGradient(CENTRO, CENTRO, 1, CENTRO, CENTRO, nucleoR);
+    nucleo.addColorStop(0, 'rgba(255,255,255,' + (0.95 + energia * 0.05) + ')');
+    nucleo.addColorStop(0.55, 'rgba(' + corForte + ',' + (0.85 + energia * 0.15) + ')');
+    nucleo.addColorStop(0.85, 'rgba(' + cor + ',' + (0.55 + energia * 0.3) + ')');
+    nucleo.addColorStop(1, 'rgba(' + cor + ',0.05)');
+    ctx.fillStyle = nucleo;
+    ctx.beginPath(); ctx.arc(CENTRO, CENTRO, nucleoR, 0, 6.29); ctx.fill();
+
+    // anel segmentado estilo bobinas do reator, girando no plano da tela
+    ctx.save();
+    ctx.translate(CENTRO, CENTRO);
+    ctx.rotate(t * 0.25);
+    ctx.shadowColor = 'rgba(' + cor + ',.9)';
+    ctx.shadowBlur = 14 + energia * 14;
+    ctx.strokeStyle = 'rgba(' + cor + ',' + (0.7 + energia * 0.3) + ')';
+    ctx.lineWidth = 8 + energia * 3;
+    const segmentos = 10, folga = 0.1;
+    for (let s = 0; s < segmentos; s++) {
+      const a0 = (s / segmentos) * 6.2832 + folga;
+      const a1 = ((s + 1) / segmentos) * 6.2832 - folga;
+      ctx.beginPath(); ctx.arc(0, 0, RAIO * 0.44 * pulso, a0, a1); ctx.stroke();
+    }
+    ctx.restore();
+
+    // órbitas de energia em 3D com cometas
+    const orbitas = [
+      { inc: 0.5, vel: 0.6, raio: 0.72 },
+      { inc: -0.9, vel: -0.42, raio: 0.86 },
+      { inc: 1.25, vel: 0.3, raio: 0.99 }
+    ];
+    const cy = Math.cos(rotY), sy = Math.sin(rotY);
+    for (const o of orbitas) {
+      ctx.beginPath();
+      for (let i = 0; i <= 72; i++) {
+        const a = (i / 72) * 6.2832;
+        let x = Math.cos(a) * o.raio, z = Math.sin(a) * o.raio;
+        let y = z * Math.sin(o.inc); z = z * Math.cos(o.inc);
+        const x2 = x * cy - z * sy, z2 = x * sy + z * cy;
+        const persp = 1 / (1.65 - z2 * 0.45);
+        const px = CENTRO + x2 * RAIO * persp * 1.28;
+        const py = CENTRO + y * RAIO * persp * 1.28;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.strokeStyle = 'rgba(' + cor + ',' + (0.28 + energia * 0.35) + ')';
+      ctx.lineWidth = 2.2;
+      ctx.shadowColor = 'rgba(' + cor + ',.8)';
+      ctx.shadowBlur = 8 + energia * 10;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // cometa correndo a órbita
+      const ac = t * o.vel * 2.4;
+      let x = Math.cos(ac) * o.raio, z = Math.sin(ac) * o.raio;
+      let y = z * Math.sin(o.inc); z = z * Math.cos(o.inc);
+      const x2 = x * cy - z * sy, z2 = x * sy + z * cy;
+      const persp = 1 / (1.65 - z2 * 0.45);
+      const px = CENTRO + x2 * RAIO * persp * 1.28;
+      const py = CENTRO + y * RAIO * persp * 1.28;
+      const brilho = ctx.createRadialGradient(px, py, 0, px, py, 10 + energia * 8);
+      brilho.addColorStop(0, 'rgba(255,255,255,' + (0.8 + energia * 0.2) + ')');
+      brilho.addColorStop(0.35, 'rgba(' + corForte + ',.7)');
+      brilho.addColorStop(1, 'rgba(' + cor + ',0)');
+      ctx.fillStyle = brilho;
+      ctx.beginPath(); ctx.arc(px, py, 10 + energia * 8, 0, 6.29); ctx.fill();
+    }
+  }
+
+  function desenhar() {
+    t += 0.016;
+    const alvoEnergia = estadoOrbe === 'falando' ? 1 : (estadoOrbe === 'pensando' ? 0.55 : 0.18);
+    energia += (alvoEnergia - energia) * 0.06;
+    const velocidade = estadoOrbe === 'pensando' ? 0.02 : 0.006 + energia * 0.012;
+    rotY += velocidade;
+    rotX = 0.25 + Math.sin(t * 0.3) * 0.08;
+
+    const cinza = estadoOrbe === 'desconectado';
+    const pulso = 1 + Math.sin(t * (4 + energia * 6)) * 0.045 * energia;
+
+    ctx.clearRect(0, 0, 460, 460);
+
+    if (ESTILO === 'reator') { desenharReator(cinza, pulso); requestAnimationFrame(desenhar); return; }
+
+    // núcleo brilhante
+    const nucleo = ctx.createRadialGradient(CENTRO, CENTRO, 2, CENTRO, CENTRO, RAIO * 1.05 * pulso);
+    if (cinza) {
+      nucleo.addColorStop(0, 'rgba(140,150,160,.9)');
+      nucleo.addColorStop(0.35, 'rgba(90,100,110,.35)');
+      nucleo.addColorStop(1, 'rgba(60,70,80,0)');
+    } else {
+      nucleo.addColorStop(0, 'rgba(215,246,255,' + (0.9 + energia * 0.1) + ')');
+      nucleo.addColorStop(0.32, 'rgba(60,190,255,' + (0.55 + energia * 0.35) + ')');
+      nucleo.addColorStop(0.68, 'rgba(0,110,200,' + (0.2 + energia * 0.22) + ')');
+      nucleo.addColorStop(1, 'rgba(0,60,140,0)');
+    }
+    ctx.fillStyle = nucleo;
+    ctx.beginPath();
+    ctx.arc(CENTRO, CENTRO, RAIO * 1.05 * pulso, 0, 6.29);
+    ctx.fill();
+
+    // partículas da esfera
+    const cy = Math.cos(rotY), sy = Math.sin(rotY);
+    const cx = Math.cos(rotX), sx = Math.sin(rotX);
+    for (const p of pontos) {
+      const respiro = 1 + Math.sin(t * 2.2 + p.fase) * (0.03 + energia * 0.1);
+      let x = p.x * cy - p.z * sy;
+      let z = p.x * sy + p.z * cy;
+      let y = p.y * cx - z * sx;
+      z = p.y * sx + z * cx;
+      const persp = 1 / (1.9 - z * 0.7);
+      const px = CENTRO + x * RAIO * p.camada * respiro * pulso * persp * 1.35;
+      const py = CENTRO + y * RAIO * p.camada * respiro * pulso * persp * 1.35;
+      const luz = (z + 1) / 2;
+      const tam = (0.9 + luz * 2.7) * (0.8 + energia * 0.5);
+      ctx.beginPath();
+      ctx.arc(px, py, tam, 0, 6.29);
+      ctx.fillStyle = cinza
+        ? 'rgba(150,160,170,' + (0.15 + luz * 0.5) + ')'
+        : 'rgba(' + Math.round(90 + luz * 130) + ',' + Math.round(200 + luz * 55) + ',255,' + (0.22 + luz * 0.75) + ')';
+      ctx.fill();
+    }
+
+    // anéis orbitais com bolinhas
+    for (const anel of aneis) {
+      for (let i = 0; i < 26; i++) {
+        const a = (i / 26) * 6.2832 + t * anel.vel * 3;
+        let x = Math.cos(a) * anel.raio;
+        let z = Math.sin(a) * anel.raio;
+        let y = z * Math.sin(anel.inclinacao);
+        z = z * Math.cos(anel.inclinacao);
+        const x2 = x * cy - z * sy;
+        const z2 = x * sy + z * cy;
+        const persp = 1 / (1.9 - z2 * 0.7);
+        const px = CENTRO + x2 * RAIO * persp * 1.05;
+        const py = CENTRO + y * RAIO * persp * 1.05;
+        const luz = (z2 + 1.6) / 2.6;
+        ctx.beginPath();
+        ctx.arc(px, py, (0.5 + luz * 1.4) * (0.7 + energia * 0.6), 0, 6.29);
+        ctx.fillStyle = cinza
+          ? 'rgba(140,150,160,' + luz * 0.35 + ')'
+          : 'rgba(120,225,255,' + (luz * (0.2 + energia * 0.45)) + ')';
+        ctx.fill();
+      }
+    }
+    requestAnimationFrame(desenhar);
+  }
+  desenhar();
+
+  // ---------- Conexão com o servidor ----------
+  const corpo = document.body;
+  const status = document.getElementById('status');
+  const origem = document.getElementById('origem');
+  const historico = document.getElementById('historico');
+  const campoTexto = document.getElementById('campoTexto');
+  const botaoMic = document.getElementById('botaoMic');
+
+  let falaAtualDiv = null;
+
+  function definirEstado(nome, texto) {
+    corpo.className = nome;
+    estadoOrbe = nome || 'parado';
+    status.textContent = texto;
+    if (nome !== 'falando') origem.textContent = '';
+  }
+
+  function nomeOrigem(caminho) {
+    if (!caminho) return '';
+    if (caminho === 'painel') return 'Conversa no painel';
+    const partes = caminho.split('/');
+    return 'Terminal: ' + (partes[partes.length - 1] || caminho);
+  }
+
+  function adicionarFala(texto, cabecalho, classe) {
+    const div = document.createElement('div');
+    div.className = 'fala ' + (classe || '');
+    if (cabecalho) {
+      const cab = document.createElement('div');
+      cab.className = 'cabecalho';
+      cab.textContent = cabecalho;
+      div.appendChild(cab);
+    }
+    div.appendChild(document.createTextNode(texto));
+    historico.appendChild(div);
+    while (historico.children.length > 30) historico.removeChild(historico.firstChild);
+    div.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    return div;
+  }
+
+  function conectar() {
+    const fonte = new EventSource('/api/eventos');
+    fonte.onmessage = (e) => {
+      const evento = JSON.parse(e.data);
+      if (evento.tipo === 'conectado') {
+        definirEstado('', 'De olho no terminal');
+        if (evento.velocidade) {
+          controleVelocidade.value = evento.velocidade;
+          valorVelocidade.textContent = evento.velocidade.toFixed(1) + 'x';
+        }
+      }
+      if (evento.tipo === 'pensando') definirEstado('pensando', 'Pensando...');
+      if (evento.tipo === 'falando') {
+        definirEstado('falando', 'Falando');
+        origem.textContent = nomeOrigem(evento.origem);
+        if (falaAtualDiv) falaAtualDiv.classList.remove('atual');
+        const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        falaAtualDiv = adicionarFala(evento.texto, hora + '  ·  ' + nomeOrigem(evento.origem), 'atual');
+      }
+      if (evento.tipo === 'parado') {
+        if (falaAtualDiv) { falaAtualDiv.classList.remove('atual'); falaAtualDiv = null; }
+        definirEstado('', 'De olho no terminal');
+      }
+    };
+    fonte.onerror = () => {
+      definirEstado('desconectado', 'Jarvis desligado, tentando reconectar...');
+      fonte.close();
+      setTimeout(conectar, 3000);
+    };
+  }
+  conectar();
+
+  document.getElementById('botaoParar').addEventListener('click', () => fetch('/api/parar', { method: 'POST' }));
+
+  const controleVelocidade = document.getElementById('controleVelocidade');
+  const valorVelocidade = document.getElementById('valorVelocidade');
+  let esperaVelocidade = null;
+  controleVelocidade.addEventListener('input', () => {
+    const v = Number(controleVelocidade.value);
+    valorVelocidade.textContent = v.toFixed(1) + 'x';
+    clearTimeout(esperaVelocidade);
+    esperaVelocidade = setTimeout(() => {
+      fetch('/api/velocidade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valor: v })
+      });
+    }, 250);
+  });
+
+  async function enviarTexto() {
+    const texto = campoTexto.value.trim();
+    if (!texto) return;
+    campoTexto.value = '';
+    adicionarFala(texto, 'Você', 'eu');
+    try {
+      await fetch('/api/texto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texto })
+      });
+    } catch (e) {
+      definirEstado('desconectado', 'Falha na conexão com o Jarvis');
+    }
+  }
+  document.getElementById('botaoEnviar').addEventListener('click', enviarTexto);
+  campoTexto.addEventListener('keydown', (e) => { if (e.key === 'Enter') enviarTexto(); });
+
+  let gravador = null, pedacos = [], tipoAudio = '';
+  async function iniciarGravacao() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      tipoAudio = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      gravador = new MediaRecorder(stream, { mimeType: tipoAudio });
+      pedacos = [];
+      gravador.ondataavailable = (e) => pedacos.push(e.data);
+      gravador.onstop = enviarAudio;
+      gravador.start();
+      botaoMic.classList.add('gravando');
+      definirEstado('', 'Ouvindo você...');
+    } catch (e) {
+      definirEstado('', 'Preciso da permissão do microfone');
+    }
+  }
+  function pararGravacao() {
+    if (gravador && gravador.state === 'recording') {
+      gravador.stop();
+      gravador.stream.getTracks().forEach((t) => t.stop());
+    }
+    botaoMic.classList.remove('gravando');
+  }
+  async function enviarAudio() {
+    const blob = new Blob(pedacos, { type: tipoAudio });
+    if (blob.size < 2000) { definirEstado('', 'Áudio muito curto'); return; }
+    definirEstado('pensando', 'Entendendo o áudio...');
+    try {
+      const resposta = await fetch('/api/conversar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream', 'X-Audio-Type': tipoAudio },
+        body: blob
+      });
+      const dados = await resposta.json();
+      if (dados.erro) { adicionarFala(dados.erro, '', ''); definirEstado('', 'De olho no terminal'); }
+      else if (dados.pergunta) adicionarFala(dados.pergunta, 'Você', 'eu');
+    } catch (e) {
+      definirEstado('desconectado', 'Falha na conexão com o Jarvis');
+    }
+  }
+  botaoMic.addEventListener('pointerdown', iniciarGravacao);
+  botaoMic.addEventListener('pointerup', pararGravacao);
+  botaoMic.addEventListener('pointerleave', pararGravacao);
+</script>
+</body>
+</html>
