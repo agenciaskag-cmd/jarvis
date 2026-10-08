@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jarvis</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: #02050c;
+    color: #eaf6ff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    overflow: hidden;
+  }
+  #cena { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* ---------- Topo ---------- */
+  .topo {
+    position: fixed; top: 0; left: 0; right: 0; height: 44px; z-index: 3;
+    display: flex; align-items: center; justify-content: space-between; padding: 0 20px;
+  }
+  h1 { font-size: 15px; letter-spacing: 6px; font-weight: 700; color: #dff3ff; text-shadow: 0 0 18px rgba(0,180,255,.6); white-space: nowrap; }
+  h1 span { color: #00d0ff; animation: piscar 2.4s ease-in-out infinite; display: inline-block; }
+  @keyframes piscar { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  .status { font-size: 13px; color: #7fb0d6; letter-spacing: .5px; white-space: nowrap; }
+  body[data-estado="falando"] .status { color: #35d6ff; text-shadow: 0 0 12px rgba(0,190,255,.6); }
+  .resumo { font-size: 12px; color: #5f86a8; letter-spacing: .5px; white-space: nowrap; display: flex; gap: 14px; align-items: center; }
+  .resumo b { color: #9fdcff; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* ---------- Time de agentes ---------- */
+  .agente {
+    position: fixed; z-index: 2; display: flex; align-items: center; gap: 11px; padding: 0 13px;
+    border-radius: 14px; border: 1px solid rgba(60, 160, 255, .22);
+    background: linear-gradient(160deg, rgba(10, 28, 52, .92), rgba(5, 13, 26, .92));
+    box-shadow: inset 0 0 22px rgba(0, 120, 255, .07);
+    opacity: 0; transform: scale(.82); transition: opacity .5s, transform .5s cubic-bezier(.2, 1.4, .4, 1), border-color .3s, box-shadow .3s;
+  }
+  .agente.no-ar { opacity: 1; transform: scale(1); }
+  .agente .icone {
+    width: 38px; height: 38px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center;
+    background: radial-gradient(circle at 35% 30%, rgba(60, 190, 255, .35), rgba(0, 60, 140, .2));
+    border: 1px solid rgba(80, 200, 255, .4); color: #8fe2ff;
+  }
+  .agente svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .agente .texto { min-width: 0; flex: 1; }
+  .agente p { font-size: 12px; color: #7fa3c2; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agente b { display: block; font-size: 15px; font-weight: 700; color: #e6f5ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agente small {
+    position: absolute; top: -9px; right: 12px; display: flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 10px;
+    font-size: 10.5px; color: #5fd6a4; white-space: nowrap; font-family: ui-monospace, Menlo, monospace;
+    background: #061426; border: 1px solid rgba(63, 224, 160, .35); transition: all .3s;
+  }
+  .agente small i { width: 6px; height: 6px; border-radius: 50%; background: #3fe0a0; box-shadow: 0 0 8px #3fe0a0; flex-shrink: 0; }
+  .agente.apoio { border-color: rgba(60, 190, 255, .55); }
+  .agente.apoio small { color: #6fd4ff; border-color: rgba(60, 190, 255, .6); }
+  .agente.apoio small i { background: #35d6ff; box-shadow: 0 0 8px #35d6ff; }
+  .agente.ativo {
+    border-color: #35d6ff; transform: scale(1.07);
+    box-shadow: 0 0 26px rgba(0, 190, 255, .45), inset 0 0 26px rgba(0, 170, 255, .2);
+  }
+  .agente.ativo .icone { color: #fff; border-color: #9fe9ff; box-shadow: 0 0 16px rgba(60, 210, 255, .8); }
+  .agente.ativo small { color: #021018; background: #35d6ff; border-color: #9fe9ff; font-weight: 700; box-shadow: 0 0 14px rgba(0, 190, 255, .7); }
+  .agente.ativo p { color: #bfe6ff; }
+  .agente.ativo small i { background: #021018; box-shadow: none; animation: piscar .7s ease-in-out infinite; }
+
+  /* ---------- Relato (quem está falando e o que está dizendo) ---------- */
+  .relato {
+    position: fixed; z-index: 2; display: flex; flex-direction: column; overflow: hidden;
+    border-radius: 16px; border: 1px solid rgba(60, 160, 255, .2);
+    background: linear-gradient(180deg, rgba(8, 22, 42, .88), rgba(4, 10, 20, .88));
+    opacity: 0; transition: opacity .8s, border-color .3s, box-shadow .3s;
+  }
+  .relato.no-ar { opacity: 1; }
+  body[data-estado="falando"] .relato { border-color: rgba(60, 200, 255, .55); box-shadow: 0 0 34px rgba(0, 160, 255, .18); }
+  .relato .cabeca {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px; flex-shrink: 0;
+    border-bottom: 1px solid rgba(60, 160, 255, .14);
+  }
+  .relato .selo {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; color: #9fe9ff;
+    background: radial-gradient(circle at 35% 30%, #6fd8ff, #0a4fb0 70%); box-shadow: 0 0 14px rgba(0, 180, 255, .55);
+  }
+  .relato .selo svg { width: 16px; height: 16px; fill: none; stroke: #fff; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .relato .quem { font-size: 17px; font-weight: 700; color: #f1faff; white-space: nowrap; }
+  .relato .papel { font-size: 13px; color: #6f9cc0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+  .relato .hora { font-size: 12px; color: #4f7596; font-family: ui-monospace, Menlo, monospace; white-space: nowrap; }
+  .relato .linhas { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 6px 14px 10px; overflow: hidden; }
+  .linha {
+    display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; font-size: 18px; line-height: 1.4; color: #eaf6ff;
+    flex-shrink: 0; animation: surgir .35s ease-out;
+  }
+  @keyframes surgir { from { opacity: 0; transform: translateY(10px); } }
+  .linha span { flex: 1; min-width: 0; word-break: break-word; }
+  .linha em {
+    width: 18px; height: 18px; margin-top: 4px; border-radius: 5px; flex-shrink: 0; display: grid; place-items: center;
+    border: 1px solid rgba(60, 190, 255, .45); font-style: normal; font-size: 12px; color: transparent; transition: all .3s;
+  }
+  .linha.feita { color: #7f9fb9; }
+  .linha.feita em { background: rgba(0, 170, 255, .22); border-color: #35d6ff; color: #9fe9ff; }
+  .linha.eu { color: #7fe6b6; }
+  .linha.eu em { border-color: rgba(87, 224, 160, .5); }
+  .linha.vazia { color: #4f7596; font-size: 15px; }
+  .linha.vazia em { display: none; }
+
+  /* ---------- Doca de controles ---------- */
+  .doca {
+    position: fixed; left: 0; right: 0; bottom: 0; height: 56px; z-index: 3;
+    display: flex; align-items: center; justify-content: center; gap: 18px; padding: 0 20px;
+    background: linear-gradient(180deg, rgba(2, 5, 12, 0), rgba(2, 5, 12, .92) 45%);
+  }
+  .botao-parar {
+    border-radius: 20px; padding: 9px 20px; flex-shrink: 0;
+    background: rgba(0, 90, 140, .12); color: #46718f; border: 1px solid rgba(70, 130, 180, .3);
+    font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all .25s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .botao-parar svg { width: 13px; height: 13px; fill: currentColor; }
+  .botao-parar.repetir { color: #9fdcff; border-color: rgba(60, 170, 255, .5); background: rgba(0, 90, 160, .22); }
+  .botao-parar.repetir:hover { color: #fff; border-color: #35d6ff; box-shadow: 0 0 16px rgba(0, 170, 230, .35); }
+  body[data-modo="compacto"] .botao-parar, body[data-modo="vertical"] .botao-parar { padding: 8px 12px; font-size: 13px; }
+  body[data-modo="vertical"] .entrada { display: none; }
+  body[data-estado="falando"] .botao-parar {
+    background: rgba(0, 90, 140, .3); color: #35d6ff; border-color: rgba(0, 190, 255, .6);
+    box-shadow: 0 0 16px rgba(0, 170, 230, .3);
+  }
+  .velocidade { display: flex; align-items: center; gap: 8px; color: #6f95b5; font-size: 12px; width: 240px; flex-shrink: 1; min-width: 150px; }
+  .velocidade output { color: #35d6ff; font-weight: 700; min-width: 38px; text-align: right; font-size: 14px; }
+  .velocidade input[type=range] {
+    flex: 1; min-width: 0; appearance: none; -webkit-appearance: none; height: 4px; border-radius: 4px;
+    background: linear-gradient(90deg, #0090cc, #123048); outline: none;
+  }
+  .velocidade input[type=range]::-webkit-slider-thumb {
+    appearance: none; -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: #35d6ff; box-shadow: 0 0 10px rgba(0, 190, 255, .6); cursor: pointer;
+  }
+  .entrada { display: flex; gap: 6px; flex: 0 1 340px; min-width: 0; }
+  .entrada input {
+    flex: 1; min-width: 0; padding: 9px 14px; border-radius: 20px;
+    border: 1px solid rgba(70, 130, 180, .35);
+    background: rgba(8, 20, 34, .8); color: #eaf6ff; font-size: 14px; outline: none;
+  }
+  .entrada input::placeholder { color: #4a6a86; }
+  .entrada input:focus { border-color: #00b6e8; box-shadow: 0 0 14px rgba(0, 170, 230, .2); }
+  .entrada button {
+    border: 1px solid rgba(70, 130, 180, .3); border-radius: 50%; width: 38px; height: 38px; flex-shrink: 0; cursor: pointer;
+    background: rgba(20, 45, 70, .9); color: #cfeaff; display: grid; place-items: center;
+  }
+  .entrada button svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .entrada button.mic.gravando { background: #0aa46a; border-color: #5fe6b0; }
+
+  /* Janela pequena de canto: só o orbe e os controles */
+  body[data-modo="compacto"] .agente, body[data-modo="compacto"] .relato, body[data-modo="compacto"] .resumo { display: none; }
+  body[data-modo="compacto"] .topo { height: 30px; justify-content: center; gap: 12px; }
+  body[data-modo="compacto"] .doca { height: 44px; gap: 10px; padding: 0 10px; }
+  body[data-modo="vertical"] .resumo span { display: none; }
+  body[data-modo="vertical"] .velocidade span { display: none; }
+  body[data-modo="vertical"] .velocidade { min-width: 90px; }
+  body[data-modo="vertical"] .doca { gap: 8px; padding: 0 10px; }
+  body[data-modo="vertical"] .agente b { font-size: 13px; }
+  @media (max-width: 700px) { body[data-modo="compacto"] .entrada { display: none; } }
+</style>
+</head>
+<body data-estado="">
+  <canvas id="cena"></canvas>
+
+  <div class="topo">
+    <h1>J A R V I S <span>●</span></h1>
+    <div class="status" id="status">Conectando...</div>
+    <div class="resumo"><span id="contagem"></span><b id="relogio"></b></div>
+  </div>
+
+  <div id="time"></div>
+
+  <section class="relato" id="relato">
+    <div class="cabeca">
+      <div class="selo" id="selo"></div>
+      <div class="quem" id="quem">Jarvis</div>
+      <div class="papel" id="papel">Coordena o time</div>
+      <div class="hora" id="hora"></div>
+    </div>
+    <div class="linhas" id="linhas"></div>
+  </section>
+
+  <footer class="doca">
+    <button class="botao-parar" id="botaoParar"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>Parar de falar</button>
+    <button class="botao-parar repetir" id="botaoRepetir"><svg viewBox="0 0 24 24"><path d="M8 5l11 7-11 7V5z"/></svg>Ouvir de novo</button>
+    <label class="velocidade">
+      <span>Velocidade</span>
+      <input id="controleVelocidade" type="range" min="1" max="3" step="0.1" value="1">
+      <output id="valorVelocidade">1.0x</output>
+    </label>
+    <div class="entrada">
+      <input id="campoTexto" type="text" placeholder="Pergunte ao Jarvis" autocomplete="off">
+      <button class="mic" id="botaoMic" title="Segure para falar"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+      <button id="botaoEnviar" title="Enviar"><svg viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></svg></button>
+    </div>
+  </footer>
+
+<script>
+  // ---------- O time: cada cartão é uma frente de trabalho da agência ----------
+  // As "chaves" decidem qual cartão acende conforme o assunto da fala do Jarvis.
+  const ICONE_JARVIS = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>';
+  const AGENTES = [
+    { id: 'estrategia', nome: 'Estratégia', papel: 'Define o plano e as metas',
+      icone: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+      chaves: ['estratég', 'plano', 'meta ', 'metas', 'prioridade', 'posicionamento', 'diagnóstico', 'funil'] },
+    { id: 'textos', nome: 'Textos', papel: 'Escreve o que vende',
+      icone: '<path d="M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4"/>',
+      chaves: ['copy', 'texto', 'roteiro', 'headline', 'título', 'script', 'vsl', 'legenda', 'mensagem'] },
+    { id: 'meta', nome: 'Anúncios Meta', papel: 'Instagram e Facebook',
+      icone: '<path d="M3 10v4h3l8 5V5L6 10H3zM17.5 9a4 4 0 0 1 0 6"/>',
+      chaves: ['meta ads', 'instagram', 'facebook', 'criativo', 'conjunto', 'campanha', 'anúncio', 'verba'] },
+    { id: 'google', nome: 'Anúncios Google', papel: 'Pesquisa e YouTube',
+      icone: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20"/>',
+      chaves: ['google', 'palavra chave', 'palavras chave', 'palavra-chave', 'youtube', 'pesquisa', 'busca'] },
+    { id: 'social', nome: 'Redes Sociais', papel: 'Posts e vídeos curtos',
+      icone: '<path d="M4 5h16v11H10l-6 4V5z"/>',
+      chaves: ['post', 'reels', 'reel ', 'carrossel', 'story', 'stories', 'conteúdo', 'calendário', 'seguidor'] },
+    { id: 'design', nome: 'Design', papel: 'Artes e páginas',
+      icone: '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/><circle cx="16.5" cy="7.5" r="3.5"/>',
+      chaves: ['arte', 'design', 'layout', 'página', 'site', 'visual', 'painel', 'apresentação', 'imagem', 'html'] },
+    { id: 'atendimento', nome: 'Atendimento', papel: 'Responde quem chama',
+      icone: '<path d="M5 13v-1a7 7 0 0 1 14 0v1M5 13h3v5H5zM16 13h3v5h-3zM19 18v1a2 2 0 0 1-2 2h-4"/>',
+      chaves: ['lead', 'whatsapp', 'contato', 'formulário', 'crm', 'atendimento', 'conversa', 'planilha'] },
+    { id: 'vendas', nome: 'Vendas', papel: 'Propostas e fechamento',
+      icone: '<path d="M4 18l5-6 4 3 7-9M15 6h5v5"/>',
+      chaves: ['venda', 'proposta', 'contrato', 'fechamento', 'fechou', 'cliente', 'reunião', 'negociação', 'preço'] }
+  ];
+
+  const corpo = document.body;
+  const DEMO = new URLSearchParams(location.search).get('demo') === '1';
+  const areaTime = document.getElementById('time');
+  for (const a of AGENTES) {
+    a.el = document.createElement('div');
+    a.el.className = 'agente';
+    a.el.innerHTML = '<div class="icone"><svg viewBox="0 0 24 24">' + a.icone + '</svg></div>' +
+      '<div class="texto"><b>' + a.nome + '</b><p>' + a.papel + '</p></div><small><i></i><span>Online</span></small>';
+    a.rotulo = a.el.querySelector('small span');
+    a.fase = Math.random();
+    a.brilho = 0;
+    areaTime.appendChild(a.el);
+  }
+
+  // ---------- Cena ----------
+  const cena = document.getElementById('cena');
+  const c = cena.getContext('2d');
+  const relato = document.getElementById('relato');
+  let W = 0, H = 0, modo = 'largo';
+  const orbe = { x: 0, y: 0, r: 100 };
+
+  function medir() {
+    W = window.innerWidth; H = window.innerHeight;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cena.width = W * dpr; cena.height = H * dpr;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    modo = H < 430 ? 'compacto' : (W < 820 || W < H ? 'vertical' : 'largo');
+    corpo.dataset.modo = modo;
+
+    if (modo === 'compacto') {
+      orbe.r = Math.min(H * 0.2, W * 0.12);
+      orbe.x = W / 2; orbe.y = 30 + (H - 74) / 2;
+      return;
+    }
+    if (modo === 'largo') {
+      orbe.r = Math.min(W * 0.105, H * 0.165);
+      orbe.x = W / 2; orbe.y = H * 0.4;
+      const larg = Math.min(240, W * 0.188), alt = 66;
+      AGENTES.forEach((a, i) => {
+        const lado = i < 4 ? -1 : 1, k = i % 4;
+        const x = orbe.x + lado * W * (k === 0 || k === 3 ? 0.31 : 0.37);
+        const y = orbe.y + [-0.27, -0.09, 0.09, 0.27][k] * H;
+        a.el.style.cssText = 'left:' + (x - larg / 2) + 'px;top:' + (y - alt / 2) + 'px;width:' + larg + 'px;height:' + alt + 'px';
+        a.ax = x - lado * larg / 2; a.ay = y; a.lado = lado;
+        const ang = [-0.5, -0.17, 0.17, 0.5][k];
+        a.ex = orbe.x + lado * Math.cos(ang) * orbe.r * 1.82; a.ey = orbe.y + Math.sin(ang) * orbe.r * 1.82;
+      });
+      const larguraRelato = Math.min(560, W * 0.42), topo = orbe.y + orbe.r * 1.9;
+      relato.style.cssText = 'left:' + (W - larguraRelato) / 2 + 'px;top:' + topo + 'px;width:' + larguraRelato + 'px;height:' + Math.max(90, H - topo - 64) + 'px';
+      return;
+    }
+    // vertical: orbe em cima, time em duas colunas, relato embaixo
+    orbe.r = Math.min(W * 0.2, H * 0.1);
+    orbe.x = W / 2; orbe.y = 52 + orbe.r * 1.75;
+    const topoTime = orbe.y + orbe.r * 2.05, larg = (W - 36) / 2, alt = 56;
+    AGENTES.forEach((a, i) => {
+      const col = i % 2, lin = Math.floor(i / 2);
+      const x = 12 + col * (larg + 12), y = topoTime + lin * (alt + 8);
+      a.el.style.cssText = 'left:' + x + 'px;top:' + y + 'px;width:' + larg + 'px;height:' + alt + 'px';
+      a.ax = x + larg / 2; a.ay = y; a.lado = 0;
+      a.ex = orbe.x + (col ? 1 : -1) * orbe.r * (0.35 + lin * 0.3); a.ey = orbe.y + orbe.r * 1.7;
+    });
+    const topo = topoTime + 4 * (alt + 8) + 4;
+    relato.style.cssText = 'left:12px;top:' + topo + 'px;width:' + (W - 24) + 'px;height:' + Math.max(70, H - topo - 62) + 'px';
+  }
+  window.addEventListener('resize', medir);
+  medir();
+
+  // poeira de fundo
+  const poeira = [];
+  for (let i = 0; i < 70; i++) poeira.push({ x: Math.random(), y: Math.random(), v: 0.004 + Math.random() * 0.012, t: 0.6 + Math.random() * 1.6, f: Math.random() * 6.28 });
+
+  let rosto = null;                 // foto opcional em public/rosto.jpg
+  let estadoOrbe = 'desconectado';  // parado | falando | pensando | desconectado
+  let energia = 0, nivel = 0, t = 0;
+  let volumes = null, posicaoVoz = 0, ultimoQuadro = performance.now(); // volume real da fala, enviado pelo servidor
+  const inicio = performance.now();
+  let agenteAtivo = null;
+
+  function bezier(a, u) {
+    const meioX = (a.ax + a.ex) / 2, meioY = (a.ay + a.ey) / 2;
+    const p1 = a.lado ? [meioX, a.ay] : [a.ax, meioY], p2 = a.lado ? [meioX, a.ey] : [a.ex, meioY];
+    const v = 1 - u;
+    return [
+      v * v * v * a.ax + 3 * v * v * u * p1[0] + 3 * v * u * u * p2[0] + u * u * u * a.ex,
+      v * v * v * a.ay + 3 * v * v * u * p1[1] + 3 * v * u * u * p2[1] + u * u * u * a.ey
+    ];
+  }
+
+  // "voz" simulada: sílabas rápidas moduladas por um fôlego lento
+  function voz(tempo) {
+    const s = Math.abs(Math.sin(tempo * 9.1) * 0.5 + Math.sin(tempo * 5.3 + 1.7) * 0.3 + Math.sin(tempo * 14.7 + 0.4) * 0.2);
+    return Math.min(1, s * 1.6) * (0.65 + 0.35 * Math.sin(tempo * 1.3));
+  }
+
+  function desenhar() {
+    t += 0.016;
+    const agora = (performance.now() - inicio) / 1000;
+    const cinza = estadoOrbe === 'desconectado';
+    const cor = cinza ? '150,160,170' : '60,200,255';
+    const corForte = cinza ? '200,205,210' : '190,240,255';
+    const alvoEnergia = estadoOrbe === 'falando' ? 1 : (estadoOrbe === 'pensando' ? 0.55 : 0.18);
+    energia += (alvoEnergia - energia) * 0.06;
+    const quadro = performance.now(), passou = Math.min(0.1, (quadro - ultimoQuadro) / 1000); ultimoQuadro = quadro;
+    let vozAgora = voz(t);
+    if (volumes) {
+      posicaoVoz += passou * velocidadeAtual;
+      const indice = Math.floor(posicaoVoz / 0.05);
+      vozAgora = indice < volumes.length ? Math.sqrt(volumes[indice] / 99) : 0.05;
+    }
+    const alvoNivel = estadoOrbe === 'falando' ? vozAgora : (estadoOrbe === 'pensando' ? 0.16 + 0.1 * Math.sin(t * 7) : 0.04 + 0.03 * Math.sin(t * 1.6));
+    nivel += (alvoNivel - nivel) * 0.45;
+    const R = orbe.r, X = orbe.x, Y = orbe.y;
+    const ligar = Math.min(1, agora / 0.9); // o orbe "acende" ao abrir
+
+    c.clearRect(0, 0, W, H);
+
+    // fundo: clarão azul atrás do orbe e poeira subindo
+    const fundo = c.createRadialGradient(X, Y, R * 0.4, X, Y, Math.max(W, H) * 0.62);
+    fundo.addColorStop(0, 'rgba(' + (cinza ? '60,70,80' : '0,90,200') + ',' + (0.2 + energia * 0.16) * ligar + ')');
+    fundo.addColorStop(0.45, 'rgba(0,40,110,' + (cinza ? 0 : 0.09) + ')');
+    fundo.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = fundo; c.fillRect(0, 0, W, H);
+    for (const p of poeira) {
+      p.y -= p.v * 0.016 * (1 + energia * 2);
+      if (p.y < -0.02) { p.y = 1.02; p.x = Math.random(); }
+      c.fillStyle = 'rgba(' + cor + ',' + (0.1 + 0.16 * (0.5 + 0.5 * Math.sin(t * 1.4 + p.f))) + ')';
+      c.beginPath(); c.arc(p.x * W, p.y * H, p.t, 0, 6.29); c.fill();
+    }
+
+    // ligações do orbe com cada agente: a linha cresce do centro até o cartão e depois fica pulsando
+    if (modo !== 'compacto') {
+      AGENTES.forEach((a, i) => {
+        const nasce = 0.7 + i * 0.13, fracao = Math.max(0, Math.min(1, (agora - nasce) / 0.5));
+        if (fracao >= 1 && !a.noAr) { a.noAr = true; a.el.classList.add('no-ar'); atualizarContagem(); }
+        if (fracao <= 0) return;
+        const ativo = a === agenteAtivo, apoio = a.apoio;
+        a.brilho += ((ativo ? 1 : apoio ? 0.5 : 0) - a.brilho) * 0.08;
+        c.beginPath();
+        for (let s = 0; s <= 28; s++) {
+          const ponto = bezier(a, 1 - (s / 28) * fracao);
+          s === 0 ? c.moveTo(ponto[0], ponto[1]) : c.lineTo(ponto[0], ponto[1]);
+        }
+        c.strokeStyle = 'rgba(' + cor + ',' + (0.16 + a.brilho * 0.6) + ')';
+        c.lineWidth = 1 + a.brilho * 1.6;
+        c.shadowColor = 'rgba(' + cor + ',.9)'; c.shadowBlur = a.brilho * 14;
+        c.stroke(); c.shadowBlur = 0;
+        if (fracao < 1 || cinza) return;
+        // pulsos: devagar do orbe para o agente em repouso; rápidos do agente para o orbe quando ele relata
+        const quantos = ativo ? 3 : 1, passo = ativo ? 0.9 : (apoio ? 0.45 : 0.16);
+        for (let q = 0; q < quantos; q++) {
+          let u = (t * passo + a.fase + q / quantos) % 1;
+          if (!ativo) u = 1 - u;
+          const ponto = bezier(a, u), tam = 2.2 + a.brilho * 2.4;
+          const halo = c.createRadialGradient(ponto[0], ponto[1], 0, ponto[0], ponto[1], tam * 3.2);
+          halo.addColorStop(0, 'rgba(255,255,255,' + (0.55 + a.brilho * 0.45) + ')');
+          halo.addColorStop(0.3, 'rgba(' + cor + ',.6)');
+          halo.addColorStop(1, 'rgba(' + cor + ',0)');
+          c.fillStyle = halo; c.beginPath(); c.arc(ponto[0], ponto[1], tam * 3.2, 0, 6.29); c.fill();
+        }
+      });
+    }
+
+    c.save();
+    c.globalAlpha = ligar;
+
+    // halo do orbe
+    const halo = c.createRadialGradient(X, Y, R * 0.8, X, Y, R * 2.3);
+    halo.addColorStop(0, 'rgba(' + cor + ',' + (0.3 + nivel * 0.4) + ')');
+    halo.addColorStop(1, 'rgba(' + cor + ',0)');
+    c.fillStyle = halo; c.beginPath(); c.arc(X, Y, R * 2.3, 0, 6.29); c.fill();
+
+    // barras em volta do rosto: sobem e descem com a fala
+    const N = 132, base = R * 1.1;
+    c.beginPath();
+    for (let i = 0; i < N; i++) {
+      const ang = (i / N) * 6.2832 - 1.5708, j = i < N / 2 ? i : N - i;
+      const ruido = 0.5 + 0.5 * Math.sin(j * 0.55 + t * 5.2) * Math.cos(j * 0.21 - t * 3.3);
+      const perfil = 0.55 + 0.45 * Math.pow(Math.sin(j * 1.7 + 0.6), 2);
+      const repouso = 0.05 + 0.035 * Math.sin(j * 0.4 + t * 1.8);
+      const comp = R * (repouso + nivel * 0.62 * ruido * perfil) * ligar;
+      const cs = Math.cos(ang), sn = Math.sin(ang);
+      c.moveTo(X + cs * base, Y + sn * base);
+      c.lineTo(X + cs * (base + comp), Y + sn * (base + comp));
+    }
+    const tinta = c.createRadialGradient(X, Y, base, X, Y, base + R * 0.62);
+    tinta.addColorStop(0, 'rgba(' + corForte + ',1)');
+    tinta.addColorStop(0.5, 'rgba(' + cor + ',.95)');
+    tinta.addColorStop(1, cinza ? 'rgba(120,130,140,.6)' : 'rgba(20,110,255,.75)');
+    c.strokeStyle = tinta; c.lineWidth = Math.max(1.6, R * 0.021); c.lineCap = 'round';
+    c.shadowColor = 'rgba(' + cor + ',1)'; c.shadowBlur = 10 + nivel * 22;
+    c.stroke();
+
+    // arcos externos girando
+    c.lineWidth = Math.max(1.5, R * 0.016);
+    const giro = t * (estadoOrbe === 'pensando' ? 1.6 : 0.22 + energia * 0.3);
+    [[1.74, 0.9, 1], [1.74, 0.5, 3.4], [1.86, 0.35, 5.2], [1.86, 0.7, 2.1]].forEach((arco, n) => {
+      const a0 = arco[2] + giro * (n % 2 ? -1 : 1);
+      c.strokeStyle = 'rgba(' + cor + ',' + (0.3 + energia * 0.45) + ')';
+      c.beginPath(); c.arc(X, Y, R * arco[0] + nivel * R * 0.12, a0, a0 + arco[1]); c.stroke();
+    });
+
+    // aro e miolo
+    c.strokeStyle = 'rgba(' + corForte + ',.95)'; c.lineWidth = Math.max(2, R * 0.025);
+    c.beginPath(); c.arc(X, Y, R * 1.03, 0, 6.29); c.stroke();
+    c.shadowBlur = 0;
+    c.beginPath(); c.arc(X, Y, R, 0, 6.29); c.closePath();
+    c.save(); c.clip();
+    const miolo = c.createRadialGradient(X, Y - R * 0.2, R * 0.05, X, Y, R);
+    miolo.addColorStop(0, cinza ? '#2a3038' : '#0d3a78');
+    miolo.addColorStop(1, '#030914');
+    c.fillStyle = miolo; c.fillRect(X - R, Y - R, R * 2, R * 2);
+    if (rosto) {
+      const escala = Math.max(2 * R / rosto.width, 2 * R / rosto.height);
+      c.drawImage(rosto, X - rosto.width * escala / 2, Y - rosto.height * escala / 2, rosto.width * escala, rosto.height * escala);
+      c.fillStyle = 'rgba(0,80,200,' + (0.08 + nivel * 0.12) + ')'; c.fillRect(X - R, Y - R, R * 2, R * 2);
+    } else {
+      const giro = t * (estadoOrbe === 'pensando' ? 1.5 : 0.22 + energia * 0.4);
+      c.save(); c.translate(X, Y);
+      // varredura tipo radar
+      if (c.createConicGradient && !cinza) {
+        c.save(); c.rotate(t * 0.9);
+        const varre = c.createConicGradient(0, 0, 0);
+        varre.addColorStop(0, 'rgba(' + cor + ',0)'); varre.addColorStop(0.8, 'rgba(' + cor + ',0)');
+        varre.addColorStop(1, 'rgba(' + cor + ',' + (0.14 + energia * 0.14) + ')');
+        c.fillStyle = varre; c.beginPath(); c.arc(0, 0, R * 0.94, 0, 6.29); c.fill();
+        c.restore();
+      }
+      // régua de marcações girando
+      c.save(); c.rotate(giro * 0.5);
+      c.strokeStyle = 'rgba(' + cor + ',.6)'; c.lineWidth = Math.max(1, R * 0.009); c.lineCap = 'butt'; c.beginPath();
+      for (let i = 0; i < 72; i++) {
+        const a = (i / 72) * 6.2832, r0 = R * (i % 6 === 0 ? 0.83 : 0.89);
+        c.moveTo(Math.cos(a) * r0, Math.sin(a) * r0); c.lineTo(Math.cos(a) * R * 0.94, Math.sin(a) * R * 0.94);
+      }
+      c.stroke(); c.restore();
+      // anel em três gomos girando ao contrário
+      c.save(); c.rotate(-giro);
+      c.strokeStyle = 'rgba(' + cor + ',' + (0.45 + energia * 0.45) + ')'; c.lineWidth = R * 0.05; c.lineCap = 'butt';
+      c.shadowColor = 'rgba(' + cor + ',.9)'; c.shadowBlur = 6 + nivel * 14;
+      for (let g = 0; g < 3; g++) { c.beginPath(); c.arc(0, 0, R * 0.73, g * 2.094 + 0.16, g * 2.094 + 1.6); c.stroke(); }
+      c.shadowBlur = 0;
+      c.restore();
+      c.save(); c.rotate(giro * 0.3);
+      c.strokeStyle = 'rgba(' + cor + ',.45)'; c.lineWidth = Math.max(1, R * 0.008);
+      c.setLineDash([R * 0.03, R * 0.05]); c.beginPath(); c.arc(0, 0, R * 0.61, 0, 6.29); c.stroke(); c.setLineDash([]);
+      c.restore();
+      // onda da voz no centro
+      const barras = 29, largura = R * 0.92, passoBarra = largura / barras;
+      c.lineCap = 'round'; c.lineWidth = passoBarra * 0.5; c.strokeStyle = 'rgba(' + corForte + ',.97)';
+      c.shadowColor = 'rgba(' + cor + ',1)'; c.shadowBlur = 8 + nivel * 16; c.beginPath();
+      for (let i = 0; i < barras; i++) {
+        const u = (i - (barras - 1) / 2) / ((barras - 1) / 2), sino = Math.cos(u * 1.4);
+        const mexe = 0.4 + 0.6 * Math.abs(Math.sin(i * 1.3 + t * 7.5) * Math.cos(i * 0.7 - t * 4.1));
+        const alturaBarra = R * (0.012 + nivel * 0.34 * sino * mexe);
+        c.moveTo(u * largura / 2, -alturaBarra); c.lineTo(u * largura / 2, alturaBarra);
+      }
+      c.stroke(); c.shadowBlur = 0;
+      // estado escrito embaixo da onda
+      c.font = '600 ' + Math.max(8, R * 0.08) + 'px ui-monospace, Menlo, monospace';
+      c.textAlign = 'center'; c.textBaseline = 'middle'; if ('letterSpacing' in c) c.letterSpacing = Math.round(R * 0.035) + 'px';
+      c.fillStyle = 'rgba(' + cor + ',.8)';
+      c.fillText({ falando: 'FALANDO', pensando: 'PENSANDO', desconectado: 'DESLIGADO' }[estadoOrbe] || 'ONLINE', R * 0.018, R * 0.45);
+      c.restore();
+    }
+    c.restore();
+    c.restore();
+
+    // texto do relato sendo "digitado" no ritmo da fala
+    if (linhaDigitando) {
+      linhaDigitando.mostrado = Math.min(linhaDigitando.texto.length, (performance.now() - linhaDigitando.desde) / 1000 * 24 * velocidadeAtual);
+      const n = Math.floor(linhaDigitando.mostrado);
+      if (n !== linhaDigitando.ultimo) { linhaDigitando.ultimo = n; linhaDigitando.alvo.textContent = linhaDigitando.texto.slice(0, n); }
+      if (n >= linhaDigitando.texto.length) linhaDigitando = null;
+    }
+    requestAnimationFrame(desenhar);
+  }
+
+  // ---------- Relato ----------
+  const status = document.getElementById('status');
+  const linhas = document.getElementById('linhas');
+  const quem = document.getElementById('quem');
+  const papel = document.getElementById('papel');
+  const hora = document.getElementById('hora');
+  const selo = document.getElementById('selo');
+  const campoTexto = document.getElementById('campoTexto');
+  const botaoMic = document.getElementById('botaoMic');
+  let linhaDigitando = null, velocidadeAtual = 1, recebeuTrecho = false;
+
+  function atualizarContagem() {
+    const total = AGENTES.filter((a) => a.noAr).length;
+    document.getElementById('contagem').textContent = total + (total === 1 ? ' agente online' : ' agentes online');
+  }
+  function tique() {
+    document.getElementById('relogio').textContent = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+  tique(); setInterval(tique, 15000);
+
+  function definirEstado(nome, texto) {
+    corpo.dataset.estado = nome;
+    estadoOrbe = nome || 'parado';
+    status.textContent = texto;
+  }
+
+  function nomeOrigem(caminho) {
+    if (!caminho) return '';
+    if (caminho === 'painel') return 'Conversa no painel';
+    const partes = caminho.split('/');
+    return 'Terminal: ' + (partes[partes.length - 1] || caminho);
+  }
+
+  function cabecalho(agente, origem) {
+    quem.textContent = agente ? agente.nome : 'Jarvis';
+    papel.textContent = agente ? agente.papel : 'Coordena o time';
+    selo.innerHTML = agente ? '<svg viewBox="0 0 24 24">' + agente.icone + '</svg>' : ICONE_JARVIS;
+    hora.textContent = origem === undefined ? '' : new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    hora.title = nomeOrigem(origem);
+  }
+
+  function concluirLinhas() {
+    if (linhaDigitando) { linhaDigitando.alvo.textContent = linhaDigitando.texto; linhaDigitando = null; }
+    for (const l of linhas.children) if (!l.classList.contains('eu') && !l.classList.contains('vazia')) l.classList.add('feita');
+  }
+
+  function novaLinha(texto, classe, digitar) {
+    const div = document.createElement('div');
+    div.className = 'linha ' + (classe || '');
+    const span = document.createElement('span'), marca = document.createElement('em');
+    marca.textContent = '✓';
+    span.textContent = digitar ? '' : texto;
+    div.appendChild(span); div.appendChild(marca);
+    linhas.appendChild(div);
+    while (linhas.children.length > 6) linhas.removeChild(linhas.firstChild);
+    if (digitar) linhaDigitando = { alvo: span, texto, mostrado: 0, ultimo: -1, desde: performance.now() };
+    return div;
+  }
+
+  // escolhe quem "relata" pelo assunto da fala; sem assunto claro, é o próprio Jarvis
+  function escolherAgentes(texto) {
+    const frase = ' ' + texto.toLowerCase() + ' ';
+    const placar = AGENTES.map((a) => ({ a, pontos: a.chaves.reduce((soma, ch) => soma + (frase.split(ch).length - 1), 0) }))
+      .filter((p) => p.pontos > 0).sort((x, y) => y.pontos - x.pontos);
+    return { principal: placar[0] ? placar[0].a : null, apoio: placar.slice(1, 3).map((p) => p.a) };
+  }
+
+  function marcarAgentes(principal, apoio) {
+    agenteAtivo = principal;
+    for (const a of AGENTES) {
+      a.apoio = apoio.includes(a);
+      a.el.classList.toggle('ativo', a === principal);
+      a.el.classList.toggle('apoio', a.apoio);
+      a.rotulo.textContent = a === principal || a.apoio ? 'Trabalhando' : 'Online';
+    }
+  }
+
+  function receber(evento) {
+    if (evento.tipo === 'conectado') {
+      definirEstado('', 'Online');
+      if (evento.velocidade) {
+        velocidadeAtual = evento.velocidade;
+        controleVelocidade.value = evento.velocidade;
+        valorVelocidade.textContent = evento.velocidade.toFixed(1) + 'x';
+      }
+      if (evento.rosto && !rosto) { const foto = new Image(); foto.onload = () => { rosto = foto; }; foto.src = '/rosto.jpg'; }
+    }
+    if (evento.tipo === 'pensando') definirEstado('pensando', 'Pensando...');
+    if (evento.tipo === 'falando') {
+      definirEstado('falando', 'Falando');
+      const escolha = escolherAgentes(evento.texto);
+      marcarAgentes(escolha.principal, escolha.apoio);
+      cabecalho(escolha.principal, evento.origem);
+      const pergunta = linhas.lastElementChild && linhas.lastElementChild.classList.contains('eu') ? linhas.lastElementChild : null;
+      linhas.innerHTML = '';
+      if (pergunta) linhas.appendChild(pergunta);
+      linhaDigitando = null; recebeuTrecho = false;
+      if (evento.trecho) receber({ tipo: 'trecho', texto: evento.trecho });
+      // servidor antigo não manda os trechos: mostra a fala inteira
+      else setTimeout(() => { if (!recebeuTrecho && estadoOrbe === 'falando') novaLinha(evento.texto, '', true); }, 4000);
+    }
+    if (evento.tipo === 'trecho') {
+      recebeuTrecho = true;
+      volumes = evento.envelope && evento.envelope.length ? evento.envelope : null; posicaoVoz = 0;
+      concluirLinhas();
+      novaLinha(evento.texto, '', true);
+    }
+    if (evento.tipo === 'parado') {
+      concluirLinhas();
+      volumes = null;
+      marcarAgentes(null, []);
+      definirEstado('', 'Online');
+    }
+  }
+
+  function conectar() {
+    const fonte = new EventSource('/api/eventos');
+    fonte.onmessage = (e) => receber(JSON.parse(e.data));
+    fonte.onerror = () => {
+      definirEstado('desconectado', 'Jarvis desligado, tentando reconectar...');
+      fonte.close();
+      setTimeout(conectar, 3000);
+    };
+  }
+
+  cabecalho(null);
+  novaLinha('Cada cartão é um agente de inteligência artificial do time. Quando o Jarvis fala, acende quem cuidou do assunto e a fala aparece escrita aqui.', 'vazia');
+  setTimeout(() => relato.classList.add('no-ar'), 1900);
+  desenhar();
+
+  if (DEMO) {
+    // só para conferir o visual sem som: repete uma fala de exemplo
+    const roteiro = [
+      [1500, { tipo: 'conectado', velocidade: 1 }],
+      [2600, { tipo: 'pensando' }],
+      [3600, { tipo: 'falando', texto: 'Demonstração do painel. Aqui aparece o que o time de anúncios do Instagram acabou de fazer.', origem: 'painel' }],
+      [3700, { tipo: 'trecho', texto: 'Demonstração do painel.' }],
+      [5400, { tipo: 'trecho', texto: 'Aqui aparece o que o time de anúncios do Instagram acabou de fazer.' }],
+      [11500, { tipo: 'parado' }]
+    ];
+    const rodar = () => { roteiro.forEach(([quando, ev]) => setTimeout(() => receber(ev), quando)); setTimeout(rodar, 14000); };
+    rodar();
+  } else conectar();
+
+  // ---------- Controles ----------
+  document.getElementById('botaoParar').addEventListener('click', () => fetch('/api/parar', { method: 'POST' }));
+  document.getElementById('botaoRepetir').addEventListener('click', async () => {
+    try {
+      const dados = await (await fetch('/api/repetir', { method: 'POST' })).json();
+      if (!dados.ok) status.textContent = 'Ainda não há fala para repetir';
+    } catch (e) {}
+  });
+
+  const controleVelocidade = document.getElementById('controleVelocidade');
+  const valorVelocidade = document.getElementById('valorVelocidade');
+  let esperaVelocidade = null;
+  controleVelocidade.addEventListener('input', () => {
+    const v = Number(controleVelocidade.value);
+    velocidadeAtual = v;
+    valorVelocidade.textContent = v.toFixed(1) + 'x';
+    clearTimeout(esperaVelocidade);
+    esperaVelocidade = setTimeout(() => {
+      fetch('/api/velocidade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valor: v })
+      });
+    }, 250);
+  });
+
+  function mostrarPergunta(texto) {
+    concluirLinhas();
+    linhas.innerHTML = '';
+    novaLinha(texto, 'eu');
+  }
+
+  async function enviarTexto() {
+    const texto = campoTexto.value.trim();
+    if (!texto) return;
+    campoTexto.value = '';
+    mostrarPergunta(texto);
+    try {
+      await fetch('/api/texto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texto })
+      });
+    } catch (e) {
+      definirEstado('desconectado', 'Falha na conexão com o Jarvis');
+    }
+  }
+  document.getElementById('botaoEnviar').addEventListener('click', enviarTexto);
+  campoTexto.addEventListener('keydown', (e) => { if (e.key === 'Enter') enviarTexto(); });
+
+  let gravador = null, pedacos = [], tipoAudio = '';
+  async function iniciarGravacao() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      tipoAudio = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      gravador = new MediaRecorder(stream, { mimeType: tipoAudio });
+      pedacos = [];
+      gravador.ondataavailable = (e) => pedacos.push(e.data);
+      gravador.onstop = enviarAudio;
+      gravador.start();
+      botaoMic.classList.add('gravando');
+      definirEstado('', 'Ouvindo você...');
+    } catch (e) {
+      definirEstado('', 'Preciso da permissão do microfone');
+    }
+  }
+  function pararGravacao() {
+    if (gravador && gravador.state === 'recording') {
+      gravador.stop();
+      gravador.stream.getTracks().forEach((faixa) => faixa.stop());
+    }
+    botaoMic.classList.remove('gravando');
+  }
+  async function enviarAudio() {
+    const blob = new Blob(pedacos, { type: tipoAudio });
+    if (blob.size < 2000) { definirEstado('', 'Áudio muito curto'); return; }
+    definirEstado('pensando', 'Entendendo o áudio...');
+    try {
+      const resposta = await fetch('/api/conversar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream', 'X-Audio-Type': tipoAudio },
+        body: blob
+      });
+      const dados = await resposta.json();
+      if (dados.erro) { linhas.innerHTML = ''; novaLinha(dados.erro, 'vazia'); definirEstado('', 'Online'); }
+      else if (dados.pergunta && estadoOrbe !== 'falando') mostrarPergunta(dados.pergunta);
+    } catch (e) {
+      definirEstado('desconectado', 'Falha na conexão com o Jarvis');
+    }
+  }
+  botaoMic.addEventListener('pointerdown', iniciarGravacao);
+  botaoMic.addEventListener('pointerup', pararGravacao);
+  botaoMic.addEventListener('pointerleave', pararGravacao);
+</script>
+</body>
+</html>

@@ -51,6 +51,7 @@ function salvarConfig() {
 
 let sessaoClaude = null;          // contexto da conversa direta com o painel
 let filaFalas = [];               // anúncios aguardando a vez
+let topicosNoAr = [];              // tópicos já mostrados da fala atual (pra painéis que conectam no meio)
 let ultimaFala = null;             // guardada pro botão Ouvir de novo
 let falaAtual = null;             // processo de áudio em andamento
 let estadoFala = null;            // o que está sendo falado agora (pra painéis que conectam no meio)
@@ -98,10 +99,56 @@ function encurtar(texto) {
   return base + ' O resto da resposta está na tela.';
 }
 
+// Tema central de um bloco: o negrito do começo, o que vem antes dos dois pontos ou a primeira frase
+function extrairTitulo(bruto, limpo) {
+  const negrito = bruto.match(/^\*\*(.+?)\*\*/);
+  let titulo = negrito ? limparParaFala(negrito[1]) : '';
+  if (!titulo) {
+    const doisPontos = limpo.indexOf(':');
+    if (doisPontos > 3 && doisPontos <= 60 && doisPontos < limpo.length - 2) titulo = limpo.slice(0, doisPontos);
+  }
+  if (!titulo) titulo = (limpo.match(/^[^.!?…]+[.!?…]?/) || [limpo])[0];
+  titulo = titulo.trim().replace(/[:.,;]+$/, '');
+  if (titulo.length > 62) titulo = titulo.slice(0, 62).replace(/\s+\S*$/, '') + '…';
+  return titulo;
+}
+
+// Cada parágrafo ou item de lista da resposta vira um tópico: é um cartão no painel e um bloco de fala
+function montarTopicos(texto) {
+  const semCodigo = texto.replace(/```[\s\S]*?```/g, ' trecho de código na tela ')
+    .replace(/^(#{1,6}\s[^\n]*)\n(?!\n)/gm, '$1\n\n'); // título sempre separado do parágrafo dele
+  const blocos = semCodigo.split(/\n\s*\n|\n(?=\s*(?:[-*•]|\d+[.)])\s+)|\n(?=#{1,6}\s)/);
+  const topicos = [];
+  let tituloPendente = '', gasto = 0;
+  for (const bloco of blocos) {
+    const bruto = bloco.trim().replace(/^(?:[-*•]|\d+[.)])\s+/, '');
+    let fala = limparParaFala(bruto);
+    if (!fala) continue;
+    // linha de título sozinha (## Assunto) dá nome ao bloco seguinte
+    if (/^#{1,6}\s/.test(bloco.trim()) && !bloco.trim().includes('\n')) { tituloPendente = fala; continue; }
+    let acabou = false;
+    if (gasto + fala.length > LIMITE_FALA) {
+      const corte = fala.slice(0, Math.max(0, LIMITE_FALA - gasto));
+      const fimFrase = Math.max(corte.lastIndexOf('. '), corte.lastIndexOf('! '), corte.lastIndexOf('? '));
+      fala = (fimFrase > 40 ? corte.slice(0, fimFrase + 1) + ' ' : '') + 'O resto da resposta está na tela.';
+      acabou = true;
+    }
+    const titulo = tituloPendente || extrairTitulo(bruto, fala);
+    let corpo = fala;
+    if (!tituloPendente && !titulo.endsWith('…') && corpo.startsWith(titulo)) corpo = corpo.slice(titulo.length).replace(/^[\s:.,;!?]+/, '');
+    corpo = corpo.charAt(0).toUpperCase() + corpo.slice(1);
+    topicos.push({ titulo, texto: corpo, fala: tituloPendente ? tituloPendente + '. ' + fala : fala });
+    tituloPendente = '';
+    gasto += fala.length;
+    if (acabou) break;
+  }
+  return topicos;
+}
+
 function enfileirarFala(texto, origem) {
-  const fala = encurtar(limparParaFala(texto));
-  if (!fala) return;
-  filaFalas.push({ texto, fala, origem: origem || '' });
+  const topicos = montarTopicos(texto);
+  if (topicos.length === 0) return;
+  filaFalas.push({ texto, topicos, origem: origem || '' });
   processarFila();
 }
 
@@ -127,17 +174,28 @@ async function processarFila() {
     const item = filaFalas.shift();
     ultimaFala = item;
     cancelarFala = false;
-    estadoFala = { tipo: 'falando', texto: item.texto, origem: item.origem };
+    estadoFala = { tipo: 'falando', texto: item.texto, origem: item.origem, total: item.topicos.length };
+    topicosNoAr = [];
     transmitir(estadoFala);
-    const pedacos = dividirEmPedacos(item.fala);
+    // pedaços de áudio de todos os tópicos em fila única; cada um sabe de qual tópico é
+    const pedacos = [], donos = [];
+    item.topicos.forEach((topico, indice) => {
+      dividirEmPedacos(topico.fala).forEach((pedaco, n) => { pedacos.push(pedaco); donos.push({ indice, abre: n === 0 }); });
+    });
     let proximaGeracao = gerarAudio(pedacos[0], 0);
     for (let i = 0; i < pedacos.length; i++) {
       const arquivo = await proximaGeracao;
       if (i + 1 < pedacos.length) proximaGeracao = gerarAudio(pedacos[i + 1], i + 1);
       if (cancelarFala) break;
-      // o painel mostra cada trecho na hora em que ele começa a ser falado, com o volume real da voz
-      estadoFala.trecho = pedacos[i];
-      transmitir({ tipo: 'trecho', texto: pedacos[i], envelope: arquivo ? await envelopeDe(arquivo) : null });
+      // o cartão do tópico surge no painel na hora em que o Jarvis começa a falar dele
+      if (donos[i].abre) {
+        const topico = item.topicos[donos[i].indice];
+        const aviso = { tipo: 'topico', indice: donos[i].indice, total: item.topicos.length, titulo: topico.titulo, texto: topico.texto };
+        topicosNoAr.push(aviso);
+        transmitir(aviso);
+      }
+      // volume real da voz, pras barras do orbe
+      transmitir({ tipo: 'trecho', envelope: arquivo ? await envelopeDe(arquivo) : null });
       if (!arquivo) continue;
       await new Promise((fim) => {
         // mpv com canal de comando: a velocidade muda AO VIVO no meio da fala
@@ -269,7 +327,7 @@ const servidor = http.createServer(async (req, res) => {
     }
 
     // painel anterior (nébula sozinha) continua disponível em /v1
-    if (req.method === 'GET' && (caminho === '/v1' || caminho === '/v2')) {
+    if (req.method === 'GET' && (caminho === '/v1' || caminho === '/v2' || caminho === '/v3')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(fs.readFileSync(path.join(PUBLIC, caminho.slice(1) + '.html')));
       return;
@@ -296,7 +354,10 @@ const servidor = http.createServer(async (req, res) => {
     if (req.method === 'GET' && caminho === '/api/eventos') {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
       res.write('data: ' + JSON.stringify({ tipo: 'conectado', velocidade: config.velocidade, rosto: fs.existsSync(ROSTO) }) + '\n\n');
-      if (estadoFala) res.write('data: ' + JSON.stringify(estadoFala) + '\n\n');
+      if (estadoFala) {
+        res.write('data: ' + JSON.stringify(estadoFala) + '\n\n');
+        for (const aviso of topicosNoAr) res.write('data: ' + JSON.stringify(aviso) + '\n\n');
+      }
       clientesSse.add(res);
       req.on('close', () => clientesSse.delete(res));
       return;
