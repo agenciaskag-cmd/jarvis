@@ -31,32 +31,34 @@
 
   /* ---------- Tópicos: um cartão para cada parágrafo da fala, surgindo na hora em que é falado ---------- */
   .topico {
-    position: fixed; z-index: 2; display: flex; align-items: flex-start; gap: 12px; padding: 13px 15px 14px;
-    border-radius: 14px; border: 1px solid rgba(60, 160, 255, .22);
-    background: linear-gradient(160deg, rgba(10, 28, 52, .92), rgba(5, 13, 26, .92));
+    position: fixed; z-index: 2; display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;
+    border-radius: 16px; border: 1px solid rgba(60, 160, 255, .25);
+    background: linear-gradient(160deg, rgba(10, 28, 52, .94), rgba(5, 13, 26, .94));
     box-shadow: inset 0 0 22px rgba(0, 120, 255, .07);
     opacity: 0; transition: border-color .4s, box-shadow .4s; will-change: transform, opacity;
   }
-  .topico .icone {
-    width: 38px; height: 38px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center;
+  .topico .numero {
+    width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center;
+    font: 700 14px ui-monospace, Menlo, monospace; color: #8fe2ff;
     background: radial-gradient(circle at 35% 30%, rgba(60, 190, 255, .35), rgba(0, 60, 140, .2));
-    border: 1px solid rgba(80, 200, 255, .4); color: #8fe2ff; transition: all .4s;
+    border: 1px solid rgba(80, 200, 255, .4); transition: all .4s;
   }
-  .topico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   .topico .texto { min-width: 0; flex: 1; }
-  .topico b { display: block; font-size: 15.5px; font-weight: 700; color: #e6f5ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .topico p { font-size: 14.5px; line-height: 1.42; color: #8fb0cc; margin-top: 4px; min-height: 41px; transition: color .4s; }
-  .topico small {
-    position: absolute; top: -9px; right: 12px; display: flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 10px;
-    font-size: 10.5px; color: #5fd6a4; white-space: nowrap; font-family: ui-monospace, Menlo, monospace;
-    background: #061426; border: 1px solid rgba(63, 224, 160, .35); transition: all .3s;
+  .topico b {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+    font-size: 18px; line-height: 1.25; font-weight: 700; color: #f1faff;
   }
-  .topico small i { width: 6px; height: 6px; border-radius: 50%; background: #3fe0a0; box-shadow: 0 0 8px #3fe0a0; flex-shrink: 0; }
-  .topico.ativo { border-color: #35d6ff; box-shadow: 0 0 26px rgba(0, 190, 255, .4), inset 0 0 26px rgba(0, 170, 255, .18); }
-  .topico.ativo .icone { color: #fff; border-color: #9fe9ff; box-shadow: 0 0 16px rgba(60, 210, 255, .8); }
-  .topico.ativo p { color: #e6f5ff; }
-  .topico.ativo small { color: #021018; background: #35d6ff; border-color: #9fe9ff; font-weight: 700; box-shadow: 0 0 14px rgba(0, 190, 255, .7); }
-  .topico.ativo small i { background: #021018; box-shadow: none; animation: piscar .7s ease-in-out infinite; }
+  .topico p { font-size: 17px; line-height: 1.35; font-weight: 600; color: #f1faff; min-height: 46px; }
+  .topico b + p { font-size: 14.5px; font-weight: 400; margin-top: 6px; }
+  .topico.ativo {
+    border-color: #35d6ff;
+    box-shadow: 0 0 30px rgba(0, 190, 255, .45), inset 0 0 26px rgba(0, 170, 255, .2);
+  }
+  .topico.ativo .numero { color: #021018; background: #35d6ff; border-color: #bff0ff; box-shadow: 0 0 18px rgba(60, 210, 255, .9); }
+  .topico.ativo p { color: #fff; }
+  .topico.feito { border-color: rgba(60, 160, 255, .22); }
+  .topico.feito b { color: #b7d3ea; }
+  .topico.feito p { color: #a9c6de; }
 
   /* ---------- Doca de controles ---------- */
   .doca {
@@ -142,36 +144,6 @@
   </footer>
 
 <script>
-  // Cada balão ganha o ícone e o nome da frente de trabalho do assunto; sem assunto claro, é o próprio Jarvis
-  const FRENTES = [
-    { nome: 'Estratégia', icone: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
-      chaves: ['estratég', 'plano', 'meta ', 'metas', 'prioridade', 'posicionamento', 'diagnóstico', 'funil'] },
-    { nome: 'Textos', icone: '<path d="M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4"/>',
-      chaves: ['copy', 'texto', 'roteiro', 'headline', 'título', 'script', 'vsl', 'legenda'] },
-    { nome: 'Anúncios Meta', icone: '<path d="M3 10v4h3l8 5V5L6 10H3zM17.5 9a4 4 0 0 1 0 6"/>',
-      chaves: ['meta ads', 'instagram', 'facebook', 'criativo', 'conjunto', 'campanha', 'anúncio', 'verba', 'tráfego'] },
-    { nome: 'Anúncios Google', icone: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20"/>',
-      chaves: ['google', 'palavra chave', 'palavras chave', 'youtube', 'pesquisa', 'busca'] },
-    { nome: 'Redes Sociais', icone: '<path d="M4 5h16v11H10l-6 4V5z"/>',
-      chaves: ['post', 'reels', 'carrossel', 'story', 'stories', 'conteúdo', 'calendário', 'seguidor'] },
-    { nome: 'Design', icone: '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/><circle cx="16.5" cy="7.5" r="3.5"/>',
-      chaves: ['arte', 'design', 'layout', 'página', 'site', 'visual', 'painel', 'apresentação', 'imagem'] },
-    { nome: 'Atendimento', icone: '<path d="M5 13v-1a7 7 0 0 1 14 0v1M5 13h3v5H5zM16 13h3v5h-3zM19 18v1a2 2 0 0 1-2 2h-4"/>',
-      chaves: ['lead', 'whatsapp', 'contato', 'formulário', 'crm', 'atendimento', 'planilha'] },
-    { nome: 'Vendas', icone: '<path d="M4 18l5-6 4 3 7-9M15 6h5v5"/>',
-      chaves: ['venda', 'proposta', 'contrato', 'fechamento', 'fechou', 'cliente', 'reunião', 'negociação', 'preço'] }
-  ];
-  const JARVIS = { nome: 'Jarvis', icone: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>' };
-  function frenteDe(texto) {
-    const frase = ' ' + texto.toLowerCase() + ' ';
-    let melhor = JARVIS, maior = 0;
-    for (const f of FRENTES) {
-      const pontos = f.chaves.reduce((soma, ch) => soma + (frase.split(ch).length - 1), 0);
-      if (pontos > maior) { maior = pontos; melhor = f; }
-    }
-    return melhor;
-  }
-
   const corpo = document.body;
   const DEMO = new URLSearchParams(location.search).get('demo') === '1';
   const mapa = document.getElementById('mapa');
@@ -199,15 +171,15 @@
       orbe.x = W / 2; orbe.y = 30 + (H - 74) / 2;
     } else if (modo === 'largo') {
       // mapa mental: orbe no centro, cartões surgem dos dois lados, de cima para baixo
-      orbe.r = Math.min(W * 0.08, H * 0.15);
+      orbe.r = Math.min(W * 0.095, H * 0.18);
       orbe.x = W / 2; orbe.y = H * 0.47;
-      larguraCartao = Math.min(350, W * 0.275);
+      larguraCartao = Math.min(300, W * 0.235);
       for (let i = 0; i < 8; i++) {
         const lado = i % 2 ? 1 : -1, k = Math.floor(i / 2);
         const x = orbe.x + lado * (W / 2 - 24 - larguraCartao / 2);
         const y = orbe.y + [-0.3, -0.1, 0.1, 0.3][k] * H;
         const ang = [-0.7, -0.22, 0.22, 0.7][k];
-        vagas.push({ esquerda: x - larguraCartao / 2, topo: y - 32, ax: x - lado * larguraCartao / 2, ay: y, lado,
+        vagas.push({ esquerda: x - larguraCartao / 2, topo: y - 38, ax: x - lado * larguraCartao / 2, ay: y, lado,
           ex: orbe.x + lado * Math.cos(ang) * orbe.r * 1.95, ey: orbe.y + Math.sin(ang) * orbe.r * 1.95 });
       }
     } else {
@@ -305,14 +277,14 @@
           s === 0 ? c.moveTo(ponto[0], ponto[1]) : c.lineTo(ponto[0], ponto[1]);
         }
         c.strokeStyle = 'rgba(' + cor + ',' + (0.3 + tp.brilho * 0.55) + ')';
-        c.lineWidth = 1 + tp.brilho * 0.9;
+        c.lineWidth = 1.2 + tp.brilho * 1.6;
         c.shadowColor = 'rgba(' + cor + ',.9)'; c.shadowBlur = 4 + tp.brilho * 14;
         c.stroke(); c.shadowBlur = 0;
         // pulsos correndo do orbe para o cartão: vários enquanto o Jarvis fala dele, um só depois
         const quantos = ativo ? 3 : 1, passo = ativo ? 0.8 : 0.14;
         for (let q = 0; q < quantos; q++) {
           const u = fracao < 1 ? 1 - fracao : 1 - ((t * passo + tp.fase + q / quantos) % 1);
-          const ponto = bezier(v, u), tam = 1.8 + tp.brilho * 1.6;
+          const ponto = bezier(v, u), tam = 2.2 + tp.brilho * 2.6;
           const halo = c.createRadialGradient(ponto[0], ponto[1], 0, ponto[0], ponto[1], tam * 3.2);
           halo.addColorStop(0, 'rgba(255,255,255,' + (0.55 + tp.brilho * 0.45) + ')');
           halo.addColorStop(0.3, 'rgba(' + cor + ',.6)');
@@ -333,7 +305,7 @@
     c.fillStyle = halo; c.beginPath(); c.arc(X, Y, R * 2.3, 0, 6.29); c.fill();
 
     // barras em volta: sobem e descem com o volume da voz
-    const N = 168, base = R * 1.1;
+    const N = 132, base = R * 1.1;
     c.beginPath();
     for (let i = 0; i < N; i++) {
       const ang = (i / N) * 6.2832 - 1.5708, j = i < N / 2 ? i : N - i;
@@ -349,12 +321,12 @@
     tinta.addColorStop(0, 'rgba(' + corForte + ',1)');
     tinta.addColorStop(0.5, 'rgba(' + cor + ',.95)');
     tinta.addColorStop(1, cinza ? 'rgba(120,130,140,.6)' : 'rgba(20,110,255,.75)');
-    c.strokeStyle = tinta; c.lineWidth = Math.max(1.2, R * 0.014); c.lineCap = 'round';
-    c.shadowColor = 'rgba(' + cor + ',1)'; c.shadowBlur = 6 + nivel * 16;
+    c.strokeStyle = tinta; c.lineWidth = Math.max(1.6, R * 0.021); c.lineCap = 'round';
+    c.shadowColor = 'rgba(' + cor + ',1)'; c.shadowBlur = 10 + nivel * 22;
     c.stroke();
 
     // arcos externos girando
-    c.lineWidth = Math.max(1, R * 0.011);
+    c.lineWidth = Math.max(1.5, R * 0.016);
     const giroFora = t * (estadoOrbe === 'pensando' ? 1.6 : 0.22 + energia * 0.3);
     [[1.74, 0.9, 1], [1.74, 0.5, 3.4], [1.86, 0.35, 5.2], [1.86, 0.7, 2.1]].forEach((arco, n) => {
       const a0 = arco[2] + giroFora * (n % 2 ? -1 : 1);
@@ -363,7 +335,7 @@
     });
 
     // aro e miolo
-    c.strokeStyle = 'rgba(' + corForte + ',.95)'; c.lineWidth = Math.max(1.4, R * 0.016);
+    c.strokeStyle = 'rgba(' + corForte + ',.95)'; c.lineWidth = Math.max(2, R * 0.025);
     c.beginPath(); c.arc(X, Y, R * 1.03, 0, 6.29); c.stroke();
     c.shadowBlur = 0;
     c.beginPath(); c.arc(X, Y, R, 0, 6.29); c.closePath();
@@ -398,7 +370,7 @@
       c.stroke(); c.restore();
       // anel em três gomos girando ao contrário
       c.save(); c.rotate(-giro);
-      c.strokeStyle = 'rgba(' + cor + ',' + (0.45 + energia * 0.45) + ')'; c.lineWidth = R * 0.03; c.lineCap = 'butt';
+      c.strokeStyle = 'rgba(' + cor + ',' + (0.45 + energia * 0.45) + ')'; c.lineWidth = R * 0.05; c.lineCap = 'butt';
       c.shadowColor = 'rgba(' + cor + ',.9)'; c.shadowBlur = 6 + nivel * 14;
       for (let g = 0; g < 3; g++) { c.beginPath(); c.arc(0, 0, R * 0.73, g * 2.094 + 0.16, g * 2.094 + 1.6); c.stroke(); }
       c.shadowBlur = 0;
@@ -409,7 +381,7 @@
       c.restore();
       // onda da voz no centro
       const barras = 29, largura = R * 0.92, passoBarra = largura / barras;
-      c.lineCap = 'round'; c.lineWidth = passoBarra * 0.36; c.strokeStyle = 'rgba(' + corForte + ',.97)';
+      c.lineCap = 'round'; c.lineWidth = passoBarra * 0.5; c.strokeStyle = 'rgba(' + corForte + ',.97)';
       c.shadowColor = 'rgba(' + cor + ',1)'; c.shadowBlur = 8 + nivel * 16; c.beginPath();
       for (let i = 0; i < barras; i++) {
         const u = (i - (barras - 1) / 2) / ((barras - 1) / 2), sino = Math.cos(u * 1.4);
@@ -481,7 +453,7 @@
 
   function concluirAtivo() {
     if (digitando) { digitando.alvo.textContent = digitando.texto; digitando = null; }
-    if (topicoAtivo) { topicoAtivo.el.classList.remove('ativo'); topicoAtivo.rotulo.textContent = 'Online'; }
+    if (topicoAtivo) { topicoAtivo.el.classList.remove('ativo'); topicoAtivo.el.classList.add('feito'); }
     topicoAtivo = null;
   }
 
@@ -493,17 +465,13 @@
     topicos.filter((tp) => tp.vaga === vaga && !tp.saindo).forEach(retirar); // fala longa: o cartão mais antigo cede o lugar
     const el = document.createElement('div');
     el.className = 'topico ativo';
-    const frente = evento.titulo ? JARVIS : frenteDe(evento.texto || '');
-    const icone = document.createElement('div'); icone.className = 'icone';
-    icone.innerHTML = '<svg viewBox="0 0 24 24">' + frente.icone + '</svg>';
+    const numero = document.createElement('div'); numero.className = 'numero';
+    numero.textContent = String(evento.indice + 1).padStart(2, '0');
     const texto = document.createElement('div'); texto.className = 'texto';
-    const titulo = document.createElement('b'); titulo.textContent = evento.titulo || frente.nome;
-    texto.appendChild(titulo);
-    const etiqueta = document.createElement('small');
-    etiqueta.innerHTML = '<i></i><span>Trabalhando</span>';
-    el.appendChild(icone); el.appendChild(texto); el.appendChild(etiqueta);
+    if (evento.titulo) { const titulo = document.createElement('b'); titulo.textContent = evento.titulo; texto.appendChild(titulo); }
+    el.appendChild(numero); el.appendChild(texto);
     mapa.appendChild(el);
-    const tp = { el, vaga, rotulo: etiqueta.lastChild, fase: Math.random(), brilho: 0, nasceu: performance.now(), saindo: 0 };
+    const tp = { el, vaga, fase: Math.random(), brilho: 0, nasceu: performance.now(), saindo: 0 };
     topicos.push(tp);
     posicionar(tp);
     if (evento.texto) {

@@ -343,7 +343,7 @@ const servidor = http.createServer(async (req, res) => {
     }
 
     // painel anterior (nébula sozinha) continua disponível em /v1
-    if (req.method === 'GET' && (caminho === '/v1' || caminho === '/v2' || caminho === '/v3' || caminho === '/v4')) {
+    if (req.method === 'GET' && (caminho === '/v1' || caminho === '/v2' || caminho === '/v3' || caminho === '/v4' || caminho === '/v5')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(fs.readFileSync(path.join(PUBLIC, caminho.slice(1) + '.html')));
       return;
