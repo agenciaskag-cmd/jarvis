@@ -48,17 +48,19 @@
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
     font-size: 18px; line-height: 1.25; font-weight: 700; color: #f1faff;
   }
-  .topico p { font-size: 17px; line-height: 1.35; font-weight: 600; color: #f1faff; min-height: 46px; }
-  .topico b + p { font-size: 14.5px; font-weight: 400; margin-top: 6px; }
+  .topico p {
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+    font-size: 14.5px; line-height: 1.4; color: #9fbdd6; margin-top: 6px; min-height: 20px;
+  }
   .topico.ativo {
     border-color: #35d6ff;
     box-shadow: 0 0 30px rgba(0, 190, 255, .45), inset 0 0 26px rgba(0, 170, 255, .2);
   }
   .topico.ativo .numero { color: #021018; background: #35d6ff; border-color: #bff0ff; box-shadow: 0 0 18px rgba(60, 210, 255, .9); }
-  .topico.ativo p { color: #fff; }
+  .topico.ativo p { color: #d2ebff; }
   .topico.feito { border-color: rgba(60, 160, 255, .22); }
   .topico.feito b { color: #b7d3ea; }
-  .topico.feito p { color: #a9c6de; }
+  .topico.feito p { color: #6f8ea8; }
 
   /* ---------- Doca de controles ---------- */
   .doca {
@@ -179,7 +181,7 @@
         const x = orbe.x + lado * (W / 2 - 24 - larguraCartao / 2);
         const y = orbe.y + [-0.3, -0.1, 0.1, 0.3][k] * H;
         const ang = [-0.7, -0.22, 0.22, 0.7][k];
-        vagas.push({ esquerda: x - larguraCartao / 2, topo: y - 38, ax: x - lado * larguraCartao / 2, ay: y, lado,
+        vagas.push({ esquerda: x - larguraCartao / 2, topo: y - 36, ax: x - lado * larguraCartao / 2, ay: y, lado,
           ex: orbe.x + lado * Math.cos(ang) * orbe.r * 1.95, ey: orbe.y + Math.sin(ang) * orbe.r * 1.95 });
       }
     } else {
@@ -413,7 +415,7 @@
 
     // texto do cartão sendo "digitado" no ritmo da fala
     if (digitando) {
-      digitando.mostrado = Math.min(digitando.texto.length, digitando.mostrado + passou * 30 * velocidadeAtual);
+      digitando.mostrado = Math.min(digitando.texto.length, digitando.mostrado + passou * 26 * velocidadeAtual);
       const n = Math.floor(digitando.mostrado);
       if (n !== digitando.ultimo) { digitando.ultimo = n; digitando.alvo.textContent = digitando.texto.slice(0, n); }
       if (n >= digitando.texto.length) digitando = null;
@@ -468,7 +470,8 @@
     const numero = document.createElement('div'); numero.className = 'numero';
     numero.textContent = String(evento.indice + 1).padStart(2, '0');
     const texto = document.createElement('div'); texto.className = 'texto';
-    if (evento.titulo) { const titulo = document.createElement('b'); titulo.textContent = evento.titulo; texto.appendChild(titulo); }
+    const titulo = document.createElement('b'); titulo.textContent = evento.titulo;
+    texto.appendChild(titulo);
     el.appendChild(numero); el.appendChild(texto);
     mapa.appendChild(el);
     const tp = { el, vaga, fase: Math.random(), brilho: 0, nasceu: performance.now(), saindo: 0 };
@@ -477,7 +480,7 @@
     if (evento.texto) {
       const paragrafo = document.createElement('p');
       texto.appendChild(paragrafo);
-      digitando = { alvo: paragrafo, texto: evento.texto, mostrado: -10, ultimo: -1 }; // começa depois que o cartão surgiu
+      digitando = { alvo: paragrafo, texto: evento.texto, mostrado: -14, ultimo: -1 }; // começa depois que o cartão surgiu
     }
     topicoAtivo = tp;
     contagem.textContent = 'Tópico ' + (evento.indice + 1) + ' de ' + evento.total;
@@ -524,15 +527,13 @@
     const roteiro = [
       [900, { tipo: 'conectado', velocidade: 1 }],
       [1800, { tipo: 'pensando' }],
-      [2800, { tipo: 'falando', total: 5 }],
-      [2900, { tipo: 'topico', indice: 0, total: 5, texto: 'Esta é uma demonstração do painel.' }],
-      [5200, { tipo: 'topico', indice: 1, total: 5, texto: 'A cada trecho da fala surge um balão novo ligado ao centro.' }],
-      [7500, { tipo: 'topico', indice: 2, total: 5, texto: 'Cada balão traz uma ideia só, inteira, sem cortar o texto.' }],
-      [9800, { tipo: 'topico', indice: 3, total: 5, texto: 'O que está sendo falado fica aceso.' }],
-      [12100, { tipo: 'topico', indice: 4, total: 5, texto: 'Os anteriores continuam na tela, formando o mapa da conversa.' }],
-      [15500, { tipo: 'parado' }]
+      [2800, { tipo: 'falando', total: 3 }],
+      [2900, { tipo: 'topico', indice: 0, total: 3, titulo: 'Demonstração do painel', texto: 'Cada parágrafo da fala vira um cartão ligado ao centro.' }],
+      [5600, { tipo: 'topico', indice: 1, total: 3, titulo: 'Tema central em destaque', texto: 'O título resume o assunto e o texto aparece logo abaixo.' }],
+      [8300, { tipo: 'topico', indice: 2, total: 3, titulo: 'Um cartão por vez', texto: 'Eles surgem na ordem em que o Jarvis vai falando.' }],
+      [12500, { tipo: 'parado' }]
     ];
-    const rodar = () => { roteiro.forEach(([quando, ev]) => setTimeout(() => receber(ev), quando)); setTimeout(rodar, 19000); };
+    const rodar = () => { roteiro.forEach(([quando, ev]) => setTimeout(() => receber(ev), quando)); setTimeout(rodar, 16000); };
     rodar();
   } else conectar();
 

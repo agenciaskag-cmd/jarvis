@@ -99,18 +99,36 @@ function encurtar(texto) {
   return base + ' O resto da resposta está na tela.';
 }
 
-// Tema central de um bloco: o negrito do começo, o que vem antes dos dois pontos ou a primeira frase
-function extrairTitulo(bruto, limpo) {
-  const negrito = bruto.match(/^\*\*(.+?)\*\*/);
-  let titulo = negrito ? limparParaFala(negrito[1]) : '';
-  if (!titulo) {
-    const doisPontos = limpo.indexOf(':');
-    if (doisPontos > 3 && doisPontos <= 60 && doisPontos < limpo.length - 2) titulo = limpo.slice(0, doisPontos);
+// Frase comprida demais pra um balão: corta na vírgula mais perto do meio
+function fatiar(frase) {
+  frase = frase.trim();
+  if (frase.length <= 120) return frase ? [frase] : [];
+  const meio = frase.length / 2, marca = /[,;:] /g;
+  let melhor = -1, achado;
+  while ((achado = marca.exec(frase))) {
+    const pos = achado.index + 1;
+    if (pos < 25 || frase.length - pos < 25) continue;
+    if (melhor < 0 || Math.abs(pos - meio) < Math.abs(melhor - meio)) melhor = pos;
   }
-  if (!titulo) titulo = (limpo.match(/^[^.!?…]+[.!?…]?/) || [limpo])[0];
-  titulo = titulo.trim().replace(/[:.,;]+$/, '');
-  if (titulo.length > 62) titulo = titulo.slice(0, 62).replace(/\s+\S*$/, '') + '…';
-  return titulo;
+  if (melhor < 0) {
+    const e = frase.indexOf(' e ', Math.max(25, Math.floor(meio) - 30));
+    if (e > 0 && frase.length - e > 25) melhor = e;
+  }
+  if (melhor < 0) return [frase];
+  return [...fatiar(frase.slice(0, melhor)), ...fatiar(frase.slice(melhor))];
+}
+
+// Um balão a cada ~7 segundos de fala: junta frases curtas e corta as compridas, uma ideia por balão
+function emBaloes(fala) {
+  const frases = fala.match(/[^.!?…]+[.!?…]+\s*|[^.!?…]+$/g) || [fala];
+  const baloes = [];
+  let atual = '';
+  for (const f of frases) {
+    if (atual && (atual + f).length > 105) { baloes.push(...fatiar(atual)); atual = f; }
+    else atual += f;
+  }
+  if (atual.trim()) baloes.push(...fatiar(atual));
+  return baloes;
 }
 
 // Cada parágrafo ou item de lista da resposta vira um tópico: é um cartão no painel e um bloco de fala
@@ -119,13 +137,13 @@ function montarTopicos(texto) {
     .replace(/^(#{1,6}\s[^\n]*)\n(?!\n)/gm, '$1\n\n'); // título sempre separado do parágrafo dele
   const blocos = semCodigo.split(/\n\s*\n|\n(?=\s*(?:[-*•]|\d+[.)])\s+)|\n(?=#{1,6}\s)/);
   const topicos = [];
-  let tituloPendente = '', gasto = 0;
+  let gasto = 0;
   for (const bloco of blocos) {
     const bruto = bloco.trim().replace(/^(?:[-*•]|\d+[.)])\s+/, '');
     let fala = limparParaFala(bruto);
     if (!fala) continue;
     // linha de título sozinha (## Assunto) dá nome ao bloco seguinte
-    if (/^#{1,6}\s/.test(bloco.trim()) && !bloco.trim().includes('\n')) { tituloPendente = fala; continue; }
+    if (/^#{1,6}\s/.test(bloco.trim()) && !bloco.trim().includes('\n')) { topicos.push({ texto: fala, fala: fala + '.' }); gasto += fala.length; continue; }
     let acabou = false;
     if (gasto + fala.length > LIMITE_FALA) {
       const corte = fala.slice(0, Math.max(0, LIMITE_FALA - gasto));
@@ -133,12 +151,10 @@ function montarTopicos(texto) {
       fala = (fimFrase > 40 ? corte.slice(0, fimFrase + 1) + ' ' : '') + 'O resto da resposta está na tela.';
       acabou = true;
     }
-    const titulo = tituloPendente || extrairTitulo(bruto, fala);
-    let corpo = fala;
-    if (!tituloPendente && !titulo.endsWith('…') && corpo.startsWith(titulo)) corpo = corpo.slice(titulo.length).replace(/^[\s:.,;!?]+/, '');
-    corpo = corpo.charAt(0).toUpperCase() + corpo.slice(1);
-    topicos.push({ titulo, texto: corpo, fala: tituloPendente ? tituloPendente + '. ' + fala : fala });
-    tituloPendente = '';
+    for (const balao of emBaloes(fala)) {
+      const texto = balao.replace(/[,;:]+$/, '');
+      topicos.push({ texto: texto.charAt(0).toUpperCase() + texto.slice(1), fala: balao });
+    }
     gasto += fala.length;
     if (acabou) break;
   }
@@ -190,7 +206,7 @@ async function processarFila() {
       // o cartão do tópico surge no painel na hora em que o Jarvis começa a falar dele
       if (donos[i].abre) {
         const topico = item.topicos[donos[i].indice];
-        const aviso = { tipo: 'topico', indice: donos[i].indice, total: item.topicos.length, titulo: topico.titulo, texto: topico.texto };
+        const aviso = { tipo: 'topico', indice: donos[i].indice, total: item.topicos.length, texto: topico.texto };
         topicosNoAr.push(aviso);
         transmitir(aviso);
       }
@@ -327,7 +343,7 @@ const servidor = http.createServer(async (req, res) => {
     }
 
     // painel anterior (nébula sozinha) continua disponível em /v1
-    if (req.method === 'GET' && (caminho === '/v1' || caminho === '/v2' || caminho === '/v3')) {
+    if (req.method === 'GET' && (caminho === '/v1' || caminho === '/v2' || caminho === '/v3' || caminho === '/v4')) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(fs.readFileSync(path.join(PUBLIC, caminho.slice(1) + '.html')));
       return;
